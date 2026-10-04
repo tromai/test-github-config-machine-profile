@@ -1,7 +1,7 @@
 # This file configures Charmcraft.
 # See https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/
 type: charm
-name: machine-profile-test
+name: boo-machine
 title: Charm Template
 summary: A very short one-line summary of the charm.
 description: |
