@@ -45,7 +45,7 @@ jobs:
   integration:
     name: Integration Tests
     needs: [lint, unit]
-    uses: ./.github/workflows/integration.yaml
+    uses: $/.github/workflows/integration.yaml
 
   publish:
     name: Publish
@@ -54,4 +54,4 @@ jobs:
     secrets:
       CHARMHUB_TOKEN: ${{ secrets.CHARMHUB_TOKEN }}
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/publish.yaml
+    uses: $/.github/workflows/publish.yaml
