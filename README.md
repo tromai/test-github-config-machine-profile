@@ -8,10 +8,10 @@ Avoid using this README file for information that is maintained or published els
 Use links instead.
 -->
 
-# machine-profile-test
+# boo-machine
 
-Charmhub package name: machine-profile-test
-More information: https://charmhub.io/machine-profile-test
+Charmhub package name: boo-machine
+More information: https://charmhub.io/boo-machine
 
 Describe your charm in one or two sentences.
 

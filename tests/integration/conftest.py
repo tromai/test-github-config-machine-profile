@@ -1,4 +1,4 @@
-# Copyright 2026 Ubuntu
+# Copyright 2026 Test Author
 # See LICENSE file for licensing details.
 #
 # The integration tests use the Jubilant library and the pytest-jubilant plugin.
