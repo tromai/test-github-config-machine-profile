@@ -3,10 +3,38 @@
 #
 # To learn more about testing, see https://canonical.com/juju/docs/ops/latest/explanation/testing/
 
+import os
+import pathlib
+from collections.abc import Callable, Iterator
+from typing import Any
+
+import ops
 import pytest
+import yaml
 from ops import testing
 
-from charm import API_TOKEN_LABEL, APP_SECRET_LABEL, BooMachineCharm
+from charm import API_TOKEN_LABEL, APP_SECRET_LABEL, BooMachineCharm, proxy_environment
+
+PROXY_VARIABLES = [
+    variable
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "FTP_PROXY", "NO_PROXY")
+    for variable in (name, name.lower())
+]
+
+
+@pytest.fixture(autouse=True)
+def isolated_proxy_environment() -> Iterator[None]:
+    """Start each test without proxy variables, and undo the changes that the charm makes.
+
+    The charm exports proxy settings to os.environ, which the tests share, because Scenario runs
+    the charm in the same process as the tests.
+    """
+    saved = os.environ.copy()
+    for variable in PROXY_VARIABLES:
+        os.environ.pop(variable, None)
+    yield
+    os.environ.clear()
+    os.environ.update(saved)
 
 
 def mock_get_version():
@@ -234,3 +262,174 @@ def test_secret_remove():
 
     # Assert — the charm asked Juju to remove that revision:
     assert ctx.removed_secret_revisions == [2]
+
+
+CHARMCRAFT = yaml.safe_load((pathlib.Path(__file__).parents[2] / "charmcraft.yaml").read_text())
+
+
+class RecordingCharm(BooMachineCharm):
+    """The charm under test, which also records the environment at the end of each handler.
+
+    Scenario restores os.environ when a test event finishes, so the tests can't inspect the
+    changes that the charm makes after 'ctx.run'. The charm's own handlers are observed first,
+    so the recorded environment includes their changes.
+    """
+
+    environment: dict[str, str] = {}
+
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        for event in (
+            self.on.install,
+            self.on.start,
+            self.on.upgrade_charm,
+            self.on.config_changed,
+            self.on["resume"].action,
+        ):
+            framework.observe(event, self._record_environment)
+
+    def _record_environment(self, event: ops.EventBase):
+        RecordingCharm.environment = dict(os.environ)
+
+
+def run_and_get_environment(
+    make_event: Callable[[testing.Context[RecordingCharm]], Any],
+    state: testing.State,
+) -> dict[str, str]:
+    """Run an event and return the environment as it was when the charm's handlers finished."""
+    # Scenario can't find charmcraft.yaml from this module, so pass the charm's metadata.
+    ctx = testing.Context(RecordingCharm, meta=CHARMCRAFT)
+    RecordingCharm.environment = {}
+    ctx.run(make_event(ctx), state)
+    return RecordingCharm.environment
+
+
+def make_proxy_state() -> testing.State:
+    """Build a state in which the model has proxy settings (like 'juju model-config')."""
+    proxy_config = testing.ProxyConfig(
+        http_proxy="http://squid.internal:3128",
+        https_proxy="http://squid.internal:3129",
+        no_proxy="127.0.0.1,localhost,::1,10.0.0.0/8",
+    )
+    return testing.State(model=testing.Model(proxy_config=proxy_config))
+
+
+def assert_proxy_environment_set(environment: dict[str, str]):
+    """Check that the variables for make_proxy_state's settings are in the environment."""
+    expected = {
+        "HTTP_PROXY": "http://squid.internal:3128",
+        "HTTPS_PROXY": "http://squid.internal:3129",
+        "NO_PROXY": "127.0.0.1,localhost,::1,10.0.0.0/8",
+    }
+    for name, value in expected.items():
+        assert environment[name] == value
+        assert environment[name.lower()] == value
+    # The model has no FTP proxy, so the charm must not export one.
+    assert "FTP_PROXY" not in environment
+    assert "ftp_proxy" not in environment
+
+
+def test_proxy_environment():
+    """Test that all of the model's proxy settings become upper- and lower-case variables."""
+    proxy = ops.ProxyConfig(
+        http_proxy="http://a:1",
+        https_proxy="http://b:2",
+        ftp_proxy="http://c:3",
+        no_proxy="localhost",
+    )
+    assert proxy_environment(proxy) == {
+        "HTTP_PROXY": "http://a:1",
+        "http_proxy": "http://a:1",
+        "HTTPS_PROXY": "http://b:2",
+        "https_proxy": "http://b:2",
+        "FTP_PROXY": "http://c:3",
+        "ftp_proxy": "http://c:3",
+        "NO_PROXY": "localhost",
+        "no_proxy": "localhost",
+    }
+
+
+def test_proxy_environment_omits_missing_settings():
+    """Test that settings that the model doesn't provide are left out."""
+    assert proxy_environment(ops.ProxyConfig()) == {}
+    assert proxy_environment(ops.ProxyConfig(https_proxy="http://b:2")) == {
+        "HTTPS_PROXY": "http://b:2",
+        "https_proxy": "http://b:2",
+    }
+
+
+def test_install_uses_proxy_settings(monkeypatch: pytest.MonkeyPatch):
+    """Test that the proxy variables are in place while the workload is being installed."""
+    # Arrange:
+    ctx = testing.Context(BooMachineCharm)
+    seen: dict[str, str] = {}
+    monkeypatch.setattr("charm.boo.install", lambda: seen.update(os.environ))
+    # Act:
+    ctx.run(ctx.on.install(), make_proxy_state())
+    # Assert:
+    assert seen["HTTP_PROXY"] == "http://squid.internal:3128"
+    assert seen["https_proxy"] == "http://squid.internal:3129"
+
+
+def test_start_exports_proxy_settings(monkeypatch: pytest.MonkeyPatch):
+    """Test that the start event exports the model's proxy settings."""
+    # Arrange:
+    monkeypatch.setattr("charm.boo.get_version", mock_get_version)
+    # Act:
+    environment = run_and_get_environment(lambda ctx: ctx.on.start(), make_proxy_state())
+    # Assert:
+    assert_proxy_environment_set(environment)
+
+
+def test_resume_action_exports_proxy_settings():
+    """Test that the resume action exports the model's proxy settings."""
+    # Act:
+    environment = run_and_get_environment(lambda ctx: ctx.on.action("resume"), make_proxy_state())
+    # Assert:
+    assert_proxy_environment_set(environment)
+
+
+def test_upgrade_charm_exports_proxy_settings():
+    """Test that upgrade-charm picks up the model's current proxy settings."""
+    # Act:
+    environment = run_and_get_environment(lambda ctx: ctx.on.upgrade_charm(), make_proxy_state())
+    # Assert:
+    assert_proxy_environment_set(environment)
+
+
+def test_config_changed_exports_proxy_settings():
+    """Test that config-changed exports the model's proxy settings."""
+    # Act:
+    environment = run_and_get_environment(lambda ctx: ctx.on.config_changed(), make_proxy_state())
+    # Assert:
+    assert_proxy_environment_set(environment)
+
+
+def test_config_changed_without_proxy_settings():
+    """Test that the charm exports nothing when the model has no proxy settings."""
+    # Act:
+    environment = run_and_get_environment(lambda ctx: ctx.on.config_changed(), testing.State())
+    # Assert:
+    assert not [variable for variable in PROXY_VARIABLES if variable in environment]
+
+
+def test_config_changed_removes_stale_proxy_settings():
+    """Test that variables are removed when the model no longer provides the setting."""
+    # Arrange — the previous values are still in the environment:
+    for variable in PROXY_VARIABLES:
+        os.environ[variable] = "http://stale.internal:3128"
+    # Act — the model has no proxy settings:
+    environment = run_and_get_environment(lambda ctx: ctx.on.config_changed(), testing.State())
+    # Assert:
+    assert not [variable for variable in PROXY_VARIABLES if variable in environment]
+
+
+def test_proxy_settings_are_visible_in_the_charm():
+    """Test that the charm reads the settings from the model, not from the test process."""
+    # Arrange:
+    ctx = testing.Context(BooMachineCharm)
+    # Act and assert:
+    with ctx(ctx.on.config_changed(), make_proxy_state()) as manager:
+        assert manager.charm.model.proxy_config.http_proxy == "http://squid.internal:3128"
+        assert manager.charm.model.proxy_config.ftp_proxy is None
+        manager.run()

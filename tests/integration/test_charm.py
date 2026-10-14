@@ -64,6 +64,46 @@ def test_user_secret(charm: pathlib.Path, juju: jubilant.Juju):
     juju.wait(jubilant.all_active)
 
 
+def last_proxy_log(juju: jubilant.Juju) -> str:
+    """Return the most recent log message about the proxy environment."""
+    lines = [line for line in juju.debug_log().splitlines() if "proxy environment updated" in line]
+    assert lines, "The charm has not logged the proxy environment."
+    return lines[-1]
+
+
+def test_model_proxy_settings(charm: pathlib.Path, juju: jubilant.Juju):
+    """Test that the charm exports the model's proxy settings to the environment."""
+    # Juju emits no event when 'juju-*-proxy' model config changes. The charm picks up the new
+    # settings the next time that it handles an event, so trigger config-changed by changing a
+    # charm config option.
+    juju.model_config(
+        {
+            "juju-http-proxy": "http://squid.internal:3128",
+            "juju-https-proxy": "http://squid.internal:3129",
+            "juju-no-proxy": "127.0.0.1,localhost,::1,10.0.0.0/8",
+        }
+    )
+    try:
+        juju.config("boo-machine", {"log-level": "debug"})
+        juju.wait(lambda status: jubilant.all_active(status) and jubilant.all_agents_idle(status))
+
+        # The charm logs the names of the variables that it set, but not their values (proxy
+        # URLs can contain credentials).
+        line = last_proxy_log(juju)
+        assert "HTTP_PROXY, HTTPS_PROXY, NO_PROXY" in line, line
+    finally:
+        # Clean up: restore the defaults so that subsequent tests start clean.
+        juju.model_config(reset=["juju-http-proxy", "juju-https-proxy", "juju-no-proxy"])
+        juju.config("boo-machine", reset=["log-level"])
+        juju.wait(lambda status: jubilant.all_active(status) and jubilant.all_agents_idle(status))
+
+    # Without the model's proxy settings, the charm must remove the variables that it set before.
+    # (The model's no-proxy setting has a default value, so NO_PROXY remains.)
+    line = last_proxy_log(juju)
+    assert "HTTP_PROXY" not in line, line
+    assert "HTTPS_PROXY" not in line, line
+
+
 # If you implement boo.get_version in the charm source,
 # remove the @pytest.mark.skip line to enable this test.
 # Alternatively, remove this test if you don't need it.
