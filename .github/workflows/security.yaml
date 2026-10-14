@@ -22,8 +22,10 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
 
-      - name: Export locked dependencies (excluding this project)
-        run: uv export --no-default-groups --frozen --no-emit-project --format requirements-txt -o requirements.txt
+      # pip-audit can't check requirements without hashes, so skip the ops branch pin from
+      # pyproject.toml's [tool.uv.sources]. Remove '--no-emit-package' when ops is released.
+      - name: Export locked dependencies (excluding this project and the pinned ops branch)
+        run: uv export --no-default-groups --frozen --no-emit-project --no-emit-package ops --no-emit-package ops-scenario --format requirements-txt -o requirements.txt
 
       - name: Run pip-audit
         run: uv run --frozen --only-group ci pip-audit --disable-pip -r requirements.txt
