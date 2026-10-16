@@ -3,6 +3,7 @@
 #
 # To learn more about testing, see https://canonical.com/juju/docs/ops/latest/explanation/testing/
 
+import dataclasses
 import os
 import pathlib
 from collections.abc import Callable, Iterator
@@ -51,7 +52,7 @@ def test_start(monkeypatch: pytest.MonkeyPatch):
     state_out = ctx.run(ctx.on.start(), testing.State())
     # Assert:
     assert state_out.workload_version is not None
-    assert state_out.unit_status == testing.ActiveStatus()
+    assert state_out.unit_status == testing.ActiveStatus("http_proxy=unset")
 
 
 def test_pause_action():
@@ -72,7 +73,7 @@ def test_resume_action():
     # Act:
     state_out = ctx.run(ctx.on.action("resume"), state_in)
     # Assert:
-    assert state_out.unit_status == testing.ActiveStatus()
+    assert state_out.unit_status == testing.ActiveStatus("http_proxy=unset")
 
 
 def test_start_creates_app_secret(monkeypatch: pytest.MonkeyPatch):
@@ -129,7 +130,7 @@ def test_config_changed_with_api_token():
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
     # Assert:
-    assert state_out.unit_status == testing.ActiveStatus()
+    assert state_out.unit_status == testing.ActiveStatus("http_proxy=unset")
 
 
 def test_config_changed_api_token_not_found():
@@ -240,7 +241,7 @@ def test_secret_changed_new_api_token_revision():
     # Assert — the charm refreshed, so it now tracks the latest revision:
     out_secret = state_out.get_secret(label=API_TOKEN_LABEL)
     assert out_secret.tracked_content == {"token": "new-api-token"}
-    assert state_out.unit_status == testing.ActiveStatus()
+    assert state_out.unit_status == testing.ActiveStatus("http_proxy=unset")
 
 
 def test_secret_remove():
@@ -422,6 +423,29 @@ def test_config_changed_removes_stale_proxy_settings():
     environment = run_and_get_environment(lambda ctx: ctx.on.config_changed(), testing.State())
     # Assert:
     assert not [variable for variable in PROXY_VARIABLES if variable in environment]
+
+
+def test_collect_status_reports_model_http_proxy():
+    """Test that the active status message shows the model's HTTP proxy."""
+    # Arrange:
+    ctx = testing.Context(BooMachineCharm)
+    state_in = make_proxy_state()
+    state_in = dataclasses.replace(state_in, unit_status=testing.ActiveStatus())
+    # Act:
+    state_out = ctx.run(ctx.on.update_status(), state_in)
+    # Assert:
+    assert state_out.unit_status == testing.ActiveStatus("http_proxy=http://squid.internal:3128")
+
+
+def test_collect_status_leaves_other_statuses_alone():
+    """Test that collect-status keeps a paused unit in maintenance status."""
+    # Arrange:
+    ctx = testing.Context(BooMachineCharm)
+    state_in = testing.State(unit_status=testing.MaintenanceStatus("paused"))
+    # Act:
+    state_out = ctx.run(ctx.on.update_status(), state_in)
+    # Assert:
+    assert state_out.unit_status == testing.MaintenanceStatus("paused")
 
 
 def test_proxy_settings_are_visible_in_the_charm():

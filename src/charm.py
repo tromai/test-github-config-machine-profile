@@ -45,6 +45,16 @@ def proxy_environment(proxy: ops.ProxyConfig) -> dict[str, str]:
     return environment
 
 
+def proxy_status_message(http_proxy: str | None) -> str:
+    """Format the model's HTTP proxy as a status message.
+
+    The integration tests read this message from the unit's status, which is more reliable than
+    searching the debug log. Proxy URLs can contain credentials, so don't use a real proxy URL
+    with credentials in a model that other people can read.
+    """
+    return f"http_proxy={http_proxy or 'unset'}"
+
+
 class BooMachineCharm(ops.CharmBase):
     """Charm the application."""
 
@@ -53,6 +63,7 @@ class BooMachineCharm(ops.CharmBase):
         framework.observe(self.on.install, self._on_install)
         framework.observe(self.on.start, self._on_start)
         framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)
+        framework.observe(self.on.collect_unit_status, self._on_collect_status)
         framework.observe(self.on["pause"].action, self._on_pause_action)
         framework.observe(self.on["resume"].action, self._on_resume_action)
         framework.observe(self.on.config_changed, self._on_config_changed)
@@ -78,6 +89,14 @@ class BooMachineCharm(ops.CharmBase):
         # Proxy URLs can contain credentials, so only log which settings are in use.
         names = [name for name in new_environment if name.isupper()]
         logger.info("proxy environment updated: %s", ", ".join(names) or "none set")
+
+    def _on_collect_status(self, event: ops.CollectStatusEvent):
+        """Report the model's HTTP proxy in the unit's active status message."""
+        # Leave any other status (blocked, maintenance, waiting) as the handlers set it. For
+        # example, the pause action leaves the unit in maintenance status until it's resumed.
+        if isinstance(self.unit.status, ops.ActiveStatus):
+            http_proxy = self.model.proxy_config.http_proxy
+            event.add_status(ops.ActiveStatus(proxy_status_message(http_proxy)))
 
     def _on_install(self, event: ops.InstallEvent):
         """Install the workload on the machine."""
