@@ -64,21 +64,19 @@ def test_user_secret(charm: pathlib.Path, juju: jubilant.Juju):
     juju.wait(jubilant.all_active)
 
 
-def wait_for_http_proxy(juju: jubilant.Juju, expected: str, timeout: float = 120) -> None:
-    """Wait until the unit's status message reports the expected HTTP proxy.
+def get_http_proxy_message(juju: jubilant.Juju) -> str:
+    """Wait for the unit to settle, then return its status message.
 
     The charm reports the model's HTTP proxy in its active status message, in the
     'collect-status' handler. 'juju.wait' can return before Juju has queued the config-changed
-    hook (the unit is still active and idle), so wait for the message itself rather than only
-    for the unit to be active.
+    hook (the unit is still active and idle), so require the unit to look active and idle for
+    several checks in a row, which gives the hook time to start and finish.
     """
-    message = f"http_proxy={expected}"
-
-    def has_message(status: jubilant.Status) -> bool:
-        unit_status = status.apps["boo-machine"].units["boo-machine/0"].workload_status
-        return unit_status.current == "active" and unit_status.message == message
-
-    juju.wait(has_message, timeout=timeout)
+    status = juju.wait(
+        lambda status: jubilant.all_active(status) and jubilant.all_agents_idle(status),
+        successes=10,
+    )
+    return status.apps["boo-machine"].units["boo-machine/0"].workload_status.message
 
 
 def test_model_proxy_settings(charm: pathlib.Path, juju: jubilant.Juju):
@@ -95,14 +93,14 @@ def test_model_proxy_settings(charm: pathlib.Path, juju: jubilant.Juju):
     )
     try:
         juju.config("boo-machine", {"log-level": "debug"})
-        wait_for_http_proxy(juju, "http://squid.internal:3128")
+        assert get_http_proxy_message(juju) == "http_proxy=http://squid.internal:3128"
     finally:
         # Clean up: restore the defaults so that subsequent tests start clean.
         juju.model_config(reset=["juju-http-proxy", "juju-https-proxy", "juju-no-proxy"])
         juju.config("boo-machine", reset=["log-level"])
 
     # Without the model's proxy settings, the charm must report that none is set.
-    wait_for_http_proxy(juju, "unset")
+    assert get_http_proxy_message(juju) == "http_proxy=unset"
 
 
 # If you implement boo.get_version in the charm source,
