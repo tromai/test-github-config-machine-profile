@@ -18,7 +18,7 @@ from charm import API_TOKEN_LABEL, APP_SECRET_LABEL, BooMachineCharm, proxy_envi
 
 PROXY_VARIABLES = [
     variable
-    for name in ("HTTP_PROXY", "HTTPS_PROXY", "FTP_PROXY", "NO_PROXY")
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY")
     for variable in (name, name.lower())
 ]
 
@@ -308,9 +308,9 @@ def run_and_get_environment(
 def make_proxy_state() -> testing.State:
     """Build a state in which the model has proxy settings (like 'juju model-config')."""
     proxy_config = testing.ProxyConfig(
-        http_proxy="http://squid.internal:3128",
-        https_proxy="http://squid.internal:3129",
-        no_proxy="127.0.0.1,localhost,::1,10.0.0.0/8",
+        http="http://squid.internal:3128",
+        https="http://squid.internal:3129",
+        no=("127.0.0.1", "localhost", "::1", "10.0.0.0/8"),
     )
     return testing.State(model=testing.Model(proxy_config=proxy_config))
 
@@ -333,18 +333,15 @@ def assert_proxy_environment_set(environment: dict[str, str]):
 def test_proxy_environment():
     """Test that all of the model's proxy settings become upper- and lower-case variables."""
     proxy = ops.ProxyConfig(
-        http_proxy="http://a:1",
-        https_proxy="http://b:2",
-        ftp_proxy="http://c:3",
-        no_proxy="localhost",
+        http="http://a:1",
+        https="http://b:2",
+        no=("localhost",),
     )
     assert proxy_environment(proxy) == {
         "HTTP_PROXY": "http://a:1",
         "http_proxy": "http://a:1",
         "HTTPS_PROXY": "http://b:2",
         "https_proxy": "http://b:2",
-        "FTP_PROXY": "http://c:3",
-        "ftp_proxy": "http://c:3",
         "NO_PROXY": "localhost",
         "no_proxy": "localhost",
     }
@@ -353,7 +350,7 @@ def test_proxy_environment():
 def test_proxy_environment_omits_missing_settings():
     """Test that settings that the model doesn't provide are left out."""
     assert proxy_environment(ops.ProxyConfig()) == {}
-    assert proxy_environment(ops.ProxyConfig(https_proxy="http://b:2")) == {
+    assert proxy_environment(ops.ProxyConfig(https="http://b:2")) == {
         "HTTPS_PROXY": "http://b:2",
         "https_proxy": "http://b:2",
     }
@@ -454,6 +451,5 @@ def test_proxy_settings_are_visible_in_the_charm():
     ctx = testing.Context(BooMachineCharm)
     # Act and assert:
     with ctx(ctx.on.config_changed(), make_proxy_state()) as manager:
-        assert manager.charm.model.proxy_config.http_proxy == "http://squid.internal:3128"
-        assert manager.charm.model.proxy_config.ftp_proxy is None
+        assert manager.charm.model.proxy_config.http == "http://squid.internal:3128"
         manager.run()

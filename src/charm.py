@@ -32,10 +32,9 @@ def proxy_environment(proxy: ops.ProxyConfig) -> dict[str, str]:
     model doesn't provide are left out.
     """
     settings = {
-        "HTTP_PROXY": proxy.http_proxy,
-        "HTTPS_PROXY": proxy.https_proxy,
-        "FTP_PROXY": proxy.ftp_proxy,
-        "NO_PROXY": proxy.no_proxy,
+        "HTTP_PROXY": proxy.http,
+        "HTTPS_PROXY": proxy.https,
+        "NO_PROXY": ",".join(proxy.no),
     }
     environment: dict[str, str] = {}
     for name, value in settings.items():
@@ -80,7 +79,7 @@ class BooMachineCharm(ops.CharmBase):
         (for example, pip, apt or snap) inherit the environment.
         """
         new_environment = proxy_environment(self.model.proxy_config)
-        for name in ("HTTP_PROXY", "HTTPS_PROXY", "FTP_PROXY", "NO_PROXY"):
+        for name in ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"):
             for variable in (name, name.lower()):
                 if variable in new_environment:
                     os.environ[variable] = new_environment[variable]
@@ -95,7 +94,7 @@ class BooMachineCharm(ops.CharmBase):
         # Leave any other status (blocked, maintenance, waiting) as the handlers set it. For
         # example, the pause action leaves the unit in maintenance status until it's resumed.
         if isinstance(self.unit.status, ops.ActiveStatus):
-            http_proxy = self.model.proxy_config.http_proxy
+            http_proxy = self.model.proxy_config.http
             event.add_status(ops.ActiveStatus(proxy_status_message(http_proxy)))
 
     def _on_install(self, event: ops.InstallEvent):

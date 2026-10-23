@@ -675,8 +675,8 @@ wheels = [
 
 [[package]]
 name = "ops"
-version = "3.9.0.dev0"
-source = { git = "https://github.com/tromai/operator?branch=model-juju-proxy-model-config-in-ops#19a2f5d5589704ee24bddcea19f01df2d6f128ad" }
+version = "3.10.0.dev0"
+source = { git = "https://github.com/tromai/operator?branch=model-juju-proxy-model-config-in-ops#8ce072943ad543fae02a57f8a3bdb5e56443e136" }
 dependencies = [
     { name = "opentelemetry-api" },
     { name = "pyyaml" },
@@ -690,8 +690,8 @@ testing = [
 
 [[package]]
 name = "ops-scenario"
-version = "8.9.0.dev0"
-source = { git = "https://github.com/tromai/operator?subdirectory=testing&branch=model-juju-proxy-model-config-in-ops#19a2f5d5589704ee24bddcea19f01df2d6f128ad" }
+version = "8.10.0.dev0"
+source = { git = "https://github.com/tromai/operator?subdirectory=testing&branch=model-juju-proxy-model-config-in-ops#8ce072943ad543fae02a57f8a3bdb5e56443e136" }
 dependencies = [
     { name = "ops" },
     { name = "pyyaml" },
