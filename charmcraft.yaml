@@ -29,6 +29,10 @@ parts:
     source: .
     build-snaps:
       - astral-uv
+    # 'git' is needed to install ops from the Git branch that pyproject.toml pins. Remove this
+    # once ops is pinned to a released version again.
+    build-packages:
+      - git
 
 # (Optional) Configuration options for the charm
 # This config section defines charm config options, and populates the Configure

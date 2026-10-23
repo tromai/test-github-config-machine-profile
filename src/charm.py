@@ -6,6 +6,7 @@
 
 import datetime
 import logging
+import os
 import secrets
 
 import ops
@@ -23,6 +24,36 @@ API_TOKEN_LABEL = "api-token"  # Any label works; matching the config option nam
 APP_SECRET_LABEL = "workload-password"
 
 
+def proxy_environment(proxy: ops.ProxyConfig) -> dict[str, str]:
+    """Convert the model's proxy settings to environment variables.
+
+    Tools disagree on the case of the variable names (curl only honours the lower-case
+    'http_proxy', for example), so each setting is provided in both cases. Settings that the
+    model doesn't provide are left out.
+    """
+    settings = {
+        "HTTP_PROXY": proxy.http,
+        "HTTPS_PROXY": proxy.https,
+        "NO_PROXY": ",".join(proxy.no),
+    }
+    environment: dict[str, str] = {}
+    for name, value in settings.items():
+        if value:
+            environment[name] = value
+            environment[name.lower()] = value
+    return environment
+
+
+def proxy_status_message(http_proxy: str | None) -> str:
+    """Format the model's HTTP proxy as a status message.
+
+    The integration tests read this message from the unit's status, which is more reliable than
+    searching the debug log. Proxy URLs can contain credentials, so don't use a real proxy URL
+    with credentials in a model that other people can read.
+    """
+    return f"http_proxy={http_proxy or 'unset'}"
+
+
 class BooMachineCharm(ops.CharmBase):
     """Charm the application."""
 
@@ -30,6 +61,8 @@ class BooMachineCharm(ops.CharmBase):
         super().__init__(framework)
         framework.observe(self.on.install, self._on_install)
         framework.observe(self.on.start, self._on_start)
+        framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)
+        framework.observe(self.on.collect_unit_status, self._on_collect_status)
         framework.observe(self.on["pause"].action, self._on_pause_action)
         framework.observe(self.on["resume"].action, self._on_resume_action)
         framework.observe(self.on.config_changed, self._on_config_changed)
@@ -38,12 +71,45 @@ class BooMachineCharm(ops.CharmBase):
         framework.observe(self.on.secret_expired, self._on_secret_expired)
         framework.observe(self.on.secret_remove, self._on_secret_remove)
 
+    def _apply_proxy_settings(self) -> None:
+        """Export the model's proxy settings to the environment of this hook.
+
+        Juju doesn't emit an event when the 'juju-*-proxy' model config changes, so call this at
+        the start of every handler that runs the workload or installs software. Subprocesses
+        (for example, pip, apt or snap) inherit the environment.
+        """
+        new_environment = proxy_environment(self.model.proxy_config)
+        for name in ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"):
+            for variable in (name, name.lower()):
+                if variable in new_environment:
+                    os.environ[variable] = new_environment[variable]
+                else:
+                    os.environ.pop(variable, None)
+        # Proxy URLs can contain credentials, so only log which settings are in use.
+        names = [name for name in new_environment if name.isupper()]
+        logger.info("proxy environment updated: %s", ", ".join(names) or "none set")
+
+    def _on_collect_status(self, event: ops.CollectStatusEvent):
+        """Report the model's HTTP proxy in the unit's active status message."""
+        # Leave any other status (blocked, maintenance, waiting) as the handlers set it. For
+        # example, the pause action leaves the unit in maintenance status until it's resumed.
+        if isinstance(self.unit.status, ops.ActiveStatus):
+            http_proxy = self.model.proxy_config.http
+            event.add_status(ops.ActiveStatus(proxy_status_message(http_proxy)))
+
     def _on_install(self, event: ops.InstallEvent):
         """Install the workload on the machine."""
+        # The proxy settings must be in place before installing anything from the network.
+        self._apply_proxy_settings()
         boo.install()
+
+    def _on_upgrade_charm(self, event: ops.UpgradeCharmEvent):
+        """Handle upgrade-charm event — the model's proxy settings might have changed."""
+        self._apply_proxy_settings()
 
     def _on_start(self, event: ops.StartEvent):
         """Handle start event."""
+        self._apply_proxy_settings()
         self.unit.status = ops.MaintenanceStatus("starting workload")
         boo.start()
         version = boo.get_version()
@@ -67,12 +133,14 @@ class BooMachineCharm(ops.CharmBase):
 
     def _on_resume_action(self, event: ops.ActionEvent):
         """Handle the resume action: start the workload again."""
+        self._apply_proxy_settings()
         self.unit.status = ops.MaintenanceStatus("starting workload")
         boo.start()
         self.unit.status = ops.ActiveStatus()
 
     def _on_config_changed(self, event: ops.ConfigChangedEvent):
         """Handle config-changed event — api-token might now hold a different secret's ID."""
+        self._apply_proxy_settings()
         self._configure_api_token()
 
     def _on_secret_changed(self, event: ops.SecretChangedEvent):
