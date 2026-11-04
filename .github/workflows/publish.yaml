@@ -34,8 +34,40 @@ jobs:
 
       - name: Upload charm to latest/edge
         run: |
+          set -euo pipefail
+
+          # Read the charm name from charmcraft.yaml.
+          charm_name=$(yq -r '.name' charmcraft.yaml)
+
+          resource_arg=""
+          # Kubernetes charms assume k8s-api in charmcraft.yaml and are released with
+          # their container image resource; machine charms don't.
+          if yq -e '.assumes // [] | .. | select(. == "k8s-api")' charmcraft.yaml > /dev/null 2>&1; then
+            # Read the resource name from charmcraft.yaml, as it's a placeholder
+            # that the charm may have renamed.
+            RESOURCE_NAME=$(yq -r '.resources | keys | .[0]' charmcraft.yaml)
+
+            # Latest uploaded revisions of the resource, as JSON
+            # This assumes the resource is a multi-arch OCI image, so the latest
+            # revision works for every platform. If the resource is per-arch or a
+            # binary, you need to build and upload it per platform instead.
+            revisions=$(charmcraft resource-revisions "$charm_name" "$RESOURCE_NAME" --format json)
+
+            # Highest revision number, empty if none has been uploaded
+            rev=$(echo "$revisions" | jq -r 'map(.revision) | max // empty')
+
+            # Fail if the resource has no revision: the charm can't be released without it
+            if [ -z "$rev" ]; then
+              echo "No revision found for resource '$RESOURCE_NAME'. Upload one with 'charmcraft upload-resource' first."
+              exit 1
+            fi
+            echo "Using $RESOURCE_NAME revision $rev"
+            resource_arg="--resource $RESOURCE_NAME:$rev"
+          fi
+
           for charm in *.charm; do
-            charmcraft upload "$charm" --release latest/edge
+            # Unquoted so that it expands to nothing for machine charms.
+            charmcraft upload "$charm" --release latest/edge $resource_arg
           done
         env:
           CHARMCRAFT_AUTH: ${{ secrets.CHARMHUB_TOKEN }}
