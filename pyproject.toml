@@ -19,9 +19,9 @@ dependencies = [
 [dependency-groups]
 # Dependencies of linting and static type checks
 lint = [
-    "ruff~=0.16",
-    "codespell>=2.4,<3",
-    "pyright>=1.1,<2",
+    "ruff~=0.17",
+    "codespell>=2.4.3,<3",
+    "pyright>=1.1.414,<2",
 ]
 # Dependencies of unit tests
 unit = [
