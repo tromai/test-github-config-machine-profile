@@ -20,9 +20,15 @@ def install() -> None:
 
 
 def start() -> None:
-    """Start the workload (by running a commamd, for example)."""
+    """Start the workload (by running a command, for example)."""
     # You'll need to implement this function.
     # Ideally, this function should only return once the workload is ready to use.
+
+
+def stop() -> None:
+    """Stop the workload (by running a command, for example)."""
+    # You'll need to implement this function.
+    # Ideally, this function should only return once the workload has stopped.
 
 
 # Functions for interacting with the workload, for example over HTTP:

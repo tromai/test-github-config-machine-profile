@@ -30,7 +30,14 @@ jobs:
         run: sudo snap install --classic concierge
 
       - name: Set up Juju and charm development tools
-        run: sudo concierge prepare -p machine --juju-channel ${{ matrix.juju-version }}/stable
+        run: |
+          # Kubernetes charms assume k8s-api in charmcraft.yaml; machine charms don't.
+          if yq -e '.assumes // [] | .. | select(. == "k8s-api")' charmcraft.yaml > /dev/null 2>&1; then
+            preset=k8s
+          else
+            preset=machine
+          fi
+          sudo concierge prepare -p "$preset" --juju-channel ${{ matrix.juju-version }}/stable
 
       - name: Pack the charm
         # The integration tests don't pack the charm. Instead, they look for a .charm
