@@ -1,10 +1,23 @@
-name: Integration Tests
+name: Integration tests
 
 on:
   workflow_call:
+    inputs:
+      python-version:
+        description: Python version for uv to use.
+        type: string
+        required: true
   workflow_dispatch:
+    inputs:
+      python-version:
+        description: Python version for uv to use.
+        type: string
+        required: true
 
 permissions: {}
+
+env:
+  UV_PYTHON: ${{ inputs.python-version }}
 
 jobs:
   integration:
@@ -18,21 +31,22 @@ jobs:
       group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.juju-version }}
       cancel-in-progress: true
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
 
       - name: Set up Concierge
         run: sudo snap install --classic concierge
 
       - name: Set up Juju and charm development tools
         run: |
-          # Kubernetes charms assume k8s-api in charmcraft.yaml; machine charms don't.
-          if yq -e '.assumes // [] | .. | select(. == "k8s-api")' charmcraft.yaml > /dev/null 2>&1; then
+          # The 'kubernetes' profile has `assumes: k8s-api` in charmcraft.yaml. The 'machine' profile doesn't.
+          assumes_k8s_api=$(yq '.assumes // [] | any_c(. == "k8s-api")' charmcraft.yaml)
+          if [ "$assumes_k8s_api" = "true" ]; then
             preset=k8s
           else
             preset=machine
@@ -50,7 +64,7 @@ jobs:
 
       - name: Upload logs
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: integration-test-logs-juju-${{ matrix.juju-version }}
           path: logs
