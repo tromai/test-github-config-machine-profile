@@ -1,10 +1,23 @@
-name: Integration Tests
+name: Integration tests
 
 on:
   workflow_call:
+    inputs:
+      python-version:
+        description: Python version for uv to use.
+        type: string
+        required: true
   workflow_dispatch:
+    inputs:
+      python-version:
+        description: Python version for uv to use.
+        type: string
+        required: true
 
 permissions: {}
+
+env:
+  UV_PYTHON: ${{ inputs.python-version }}
 
 jobs:
   integration:
@@ -18,7 +31,7 @@ jobs:
       group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.juju-version }}
       cancel-in-progress: true
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -32,7 +45,8 @@ jobs:
       - name: Set up Juju and charm development tools
         run: |
           # The 'kubernetes' profile has `assumes: k8s-api` in charmcraft.yaml. The 'machine' profile doesn't.
-          if yq -e '.assumes // [] | .. | select(. == "k8s-api")' charmcraft.yaml > /dev/null 2>&1; then
+          assumes_k8s_api=$(yq '.assumes // [] | any_c(. == "k8s-api")' charmcraft.yaml)
+          if [ "$assumes_k8s_api" = "true" ]; then
             preset=k8s
           else
             preset=machine
