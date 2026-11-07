@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - test-charmcraft-64a3a778-20261108-093555
   pull_request:
 
 permissions: {}
@@ -54,5 +55,5 @@ jobs:
     needs: [integration]
     secrets:
       CHARMHUB_TOKEN: ${{ secrets.CHARMHUB_TOKEN }}
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
     uses: $/.github/workflows/publish.yaml
