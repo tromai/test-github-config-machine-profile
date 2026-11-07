@@ -3,21 +3,18 @@ name: Integration tests
 on:
   workflow_call:
     inputs:
-      python-version:
-        description: Python version for uv to use.
+      concierge-preset:
+        description: The Concierge preset to prepare the test environment with, "k8s" or "machine".
         type: string
         required: true
   workflow_dispatch:
     inputs:
-      python-version:
-        description: Python version for uv to use.
+      concierge-preset:
+        description: The Concierge preset to prepare the test environment with, "k8s" or "machine".
         type: string
         required: true
 
 permissions: {}
-
-env:
-  UV_PYTHON: ${{ inputs.python-version }}
 
 jobs:
   integration:
@@ -43,15 +40,7 @@ jobs:
         run: sudo snap install --classic concierge
 
       - name: Set up Juju and charm development tools
-        run: |
-          # The 'kubernetes' profile has `assumes: k8s-api` in charmcraft.yaml. The 'machine' profile doesn't.
-          assumes_k8s_api=$(yq '.assumes // [] | any_c(. == "k8s-api")' charmcraft.yaml)
-          if [ "$assumes_k8s_api" = "true" ]; then
-            preset=k8s
-          else
-            preset=machine
-          fi
-          sudo concierge prepare -p "$preset" --juju-channel ${{ matrix.juju-version }}/stable
+        run: sudo concierge prepare -p ${{ inputs.concierge-preset }} --juju-channel ${{ matrix.juju-version }}/stable
 
       - name: Pack the charm
         # The integration tests don't pack the charm. Instead, they look for a .charm

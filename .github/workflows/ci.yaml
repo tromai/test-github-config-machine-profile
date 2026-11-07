@@ -46,15 +46,12 @@ jobs:
     needs: [lint, unit]
     uses: $/.github/workflows/integration.yaml
     with:
-      # The integration tests should run with the same Python version as UV_PYTHON.
-      # However, we cannot directly pass the outer env context into a reuseable workflow.
-      # Hardcode for simplicity.
-      python-version: "3.12"
+      # For a machine charm, set concierge-preset to "machine".
+      concierge-preset: k8s
 
   publish:
     name: Publish
     needs: [integration]
-    # For publish.yaml
     secrets:
       CHARMHUB_TOKEN: ${{ secrets.CHARMHUB_TOKEN }}
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
