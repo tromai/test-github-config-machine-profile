@@ -21,7 +21,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
 
       - name: Run lint
         run: uv run --frozen --only-group ci tox -e lint
@@ -36,7 +36,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
 
       - name: Run tests
         run: uv run --frozen --only-group ci tox -e unit
@@ -46,15 +46,12 @@ jobs:
     needs: [lint, unit]
     uses: $/.github/workflows/integration.yaml
     with:
-      # The integration tests should run with the same Python version as UV_PYTHON.
-      # However, we cannot directly pass the outer env context into a reuseable workflow.
-      # Hardcode for simplicity.
-      python-version: "3.12"
+      # For a machine charm, set concierge-preset to "machine".
+      concierge-preset: k8s
 
   publish:
     name: Publish
     needs: [integration]
-    # For publish.yaml
     secrets:
       CHARMHUB_TOKEN: ${{ secrets.CHARMHUB_TOKEN }}
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -3,21 +3,18 @@ name: Integration tests
 on:
   workflow_call:
     inputs:
-      python-version:
-        description: Python version for uv to use.
+      concierge-preset:
+        description: The Concierge preset to prepare the test environment with, "k8s" or "machine".
         type: string
         required: true
   workflow_dispatch:
     inputs:
-      python-version:
-        description: Python version for uv to use.
+      concierge-preset:
+        description: The Concierge preset to prepare the test environment with, "k8s" or "machine".
         type: string
         required: true
 
 permissions: {}
-
-env:
-  UV_PYTHON: ${{ inputs.python-version }}
 
 jobs:
   integration:
@@ -37,21 +34,16 @@ jobs:
           persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
 
       - name: Set up Concierge
         run: sudo snap install --classic concierge
 
       - name: Set up Juju and charm development tools
-        run: |
-          # The 'kubernetes' profile has `assumes: k8s-api` in charmcraft.yaml. The 'machine' profile doesn't.
-          assumes_k8s_api=$(yq '.assumes // [] | any_c(. == "k8s-api")' charmcraft.yaml)
-          if [ "$assumes_k8s_api" = "true" ]; then
-            preset=k8s
-          else
-            preset=machine
-          fi
-          sudo concierge prepare -p "$preset" --juju-channel ${{ matrix.juju-version }}/stable
+        env:
+          CONCIERGE_PRESET: ${{ inputs.concierge-preset }}
+          JUJU_CHANNEL: ${{ matrix.juju-version }}/stable
+        run: sudo concierge prepare -p "$CONCIERGE_PRESET" --juju-channel "$JUJU_CHANNEL"
 
       - name: Pack the charm
         # The integration tests don't pack the charm. Instead, they look for a .charm
@@ -64,7 +56,7 @@ jobs:
 
       - name: Upload logs
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: integration-test-logs-juju-${{ matrix.juju-version }}
           path: logs
