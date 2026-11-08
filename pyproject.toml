@@ -4,7 +4,7 @@
 [project]
 name = "boo-machine"
 version = "0.0.1"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 
 # Dependencies of the charm code
 # You should list the dependencies of the code in src/, including any charm libraries from PyPI.
@@ -38,9 +38,9 @@ integration = [
 # Dependencies of CI tools, to be used with the github-ci profile.
 ci = [
     "pip-audit>=2.10,<3",
-    "tox>=4.67,<5",
-    "tox-uv>=1.37,<2",
-    "zizmor>=1.32,<2",
+    "tox>=4.64,<5",
+    "tox-uv>=1.36,<2",
+    "zizmor>=1.30,<2",
 ]
 
 # Testing tools configuration
