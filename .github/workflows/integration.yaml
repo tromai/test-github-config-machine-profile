@@ -40,7 +40,10 @@ jobs:
         run: sudo snap install --classic concierge
 
       - name: Set up Juju and charm development tools
-        run: sudo concierge prepare -p ${{ inputs.concierge-preset }} --juju-channel ${{ matrix.juju-version }}/stable
+        env:
+          CONCIERGE_PRESET: ${{ inputs.concierge-preset }}
+          JUJU_CHANNEL: ${{ matrix.juju-version }}/stable
+        run: sudo concierge prepare -p "$CONCIERGE_PRESET" --juju-channel "$JUJU_CHANNEL"
 
       - name: Pack the charm
         # The integration tests don't pack the charm. Instead, they look for a .charm
