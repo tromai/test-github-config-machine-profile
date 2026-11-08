@@ -25,7 +25,7 @@ lint = [
 ]
 # Dependencies of unit tests
 unit = [
-    "coverage[toml]>=7.15,<8",
+    "coverage[toml]>=7.16.2,<8",
     "ops[testing]",  # uv will use the correct version based on the 'ops' dependency.
     "pytest>=9.1,<10",
 ]
@@ -38,7 +38,7 @@ integration = [
 # Dependencies of CI tools, to be used with the github-ci profile.
 ci = [
     "pip-audit>=2.10,<3",
-    "tox>=4.64,<5",
+    "tox>=4.65.0,<5",
     "tox-uv>=1.36,<2",
     "zizmor>=1.30,<2",
 ]
