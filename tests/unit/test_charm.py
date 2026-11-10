@@ -3,10 +3,36 @@
 #
 # To learn more about testing, see https://canonical.com/juju/docs/ops/latest/explanation/testing/
 
+import dataclasses
+import functools
+import http.server
+import pathlib
+import threading
+import urllib.error
+
+import ops
 import pytest
 from ops import testing
 
-from charm import API_TOKEN_LABEL, APP_SECRET_LABEL, BooMachineCharm
+import boo
+from charm import API_TOKEN_LABEL, APP_SECRET_LABEL, BooMachineCharm, proxy_environment
+
+
+@pytest.fixture(autouse=True)
+def fake_machine(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> list[tuple[str, ...]]:
+    """Run the workload module against temporary files, with a recording fake of systemctl.
+
+    The test returns the list of systemctl commands that the charm ran, in order.
+    """
+    systemctl_calls: list[tuple[str, ...]] = []
+
+    def fake_systemctl(*args: str):
+        systemctl_calls.append(args)
+
+    monkeypatch.setattr(boo, "UNIT_FILE", tmp_path / "boo-workload.service")
+    monkeypatch.setattr(boo, "PROXY_DROP_IN", tmp_path / "boo-workload.service.d" / "proxy.conf")
+    monkeypatch.setattr(boo, "_systemctl", fake_systemctl)
+    return systemctl_calls
 
 
 def mock_get_version():
@@ -234,3 +260,260 @@ def test_secret_remove():
 
     # Assert — the charm asked Juju to remove that revision:
     assert ctx.removed_secret_revisions == [2]
+
+
+PROXY_CONFIG = testing.ProxyConfig(
+    http="http://squid.internal:3128",
+    https="http://squid.internal:3129",
+    no=("127.0.0.1", "localhost", "::1", "10.0.0.0/8"),
+)
+
+# What the workload should see for PROXY_CONFIG:
+EXPECTED_PROXY_ENVIRONMENT = {
+    "HTTP_PROXY": "http://squid.internal:3128",
+    "http_proxy": "http://squid.internal:3128",
+    "HTTPS_PROXY": "http://squid.internal:3129",
+    "https_proxy": "http://squid.internal:3129",
+    "NO_PROXY": "127.0.0.1,localhost,::1,10.0.0.0/8",
+    "no_proxy": "127.0.0.1,localhost,::1,10.0.0.0/8",
+}
+
+RELOAD_AND_RESTART = [("daemon-reload",), ("try-restart", boo.SERVICE_NAME)]
+
+
+def make_state(proxy_config: testing.ProxyConfig | None) -> testing.State:
+    """Build a state in which the model has these proxy settings.
+
+    The model's settings are what 'juju model-config juju-*-proxy' would set.
+    """
+    return testing.State(model=testing.Model(proxy_config=proxy_config))
+
+
+def with_proxy_config(
+    state: testing.State, proxy_config: testing.ProxyConfig | None
+) -> testing.State:
+    """Change the model's proxy settings, like 'juju model-config' does between two events."""
+    return dataclasses.replace(state, model=testing.Model(proxy_config=proxy_config))
+
+
+def get_workload_environment() -> dict[str, str]:
+    """Get the environment that systemd will give the workload's service, from the drop-in file."""
+    if not boo.PROXY_DROP_IN.exists():
+        return {}
+    lines = boo.PROXY_DROP_IN.read_text().splitlines()
+    assert lines[0] == "[Service]"
+    assignments = [line.removeprefix('Environment="').removesuffix('"') for line in lines[1:]]
+    return dict(assignment.split("=", 1) for assignment in assignments)
+
+
+def test_proxy_environment():
+    """Test that all of the model's proxy settings become upper- and lower-case variables."""
+    proxy = ops.ProxyConfig(
+        http="http://a:1",
+        https="http://b:2",
+        no=("localhost",),
+    )
+    assert proxy_environment(proxy) == {
+        "HTTP_PROXY": "http://a:1",
+        "http_proxy": "http://a:1",
+        "HTTPS_PROXY": "http://b:2",
+        "https_proxy": "http://b:2",
+        "NO_PROXY": "localhost",
+        "no_proxy": "localhost",
+    }
+
+
+def test_proxy_environment_omits_missing_settings():
+    """Test that settings that the model doesn't provide are left out."""
+    assert proxy_environment(ops.ProxyConfig()) == {}
+    # NO_PROXY alone has no effect, so the workload doesn't get it. This matters because Juju's
+    # default for 'juju-no-proxy' is not empty.
+    assert proxy_environment(ops.ProxyConfig(no=("localhost",))) == {}
+    assert proxy_environment(ops.ProxyConfig(https="http://b:2", no=())) == {
+        "HTTPS_PROXY": "http://b:2",
+        "https_proxy": "http://b:2",
+    }
+
+
+def test_install_writes_the_unit_file(fake_machine: list[tuple[str, ...]]):
+    """Test that the install event creates the systemd unit for the web server."""
+    ctx = testing.Context(BooMachineCharm)
+
+    ctx.run(ctx.on.install(), testing.State())
+
+    assert "python3 -m http.server" in boo.UNIT_FILE.read_text()
+    assert fake_machine == [("daemon-reload",)]
+
+
+@pytest.mark.parametrize(
+    "make_event",
+    [
+        lambda ctx: ctx.on.start(),
+        lambda ctx: ctx.on.config_changed(),
+        lambda ctx: ctx.on.update_status(),
+        lambda ctx: ctx.on.upgrade_charm(),
+        lambda ctx: ctx.on.action("resume"),
+    ],
+    ids=["start", "config-changed", "update-status", "upgrade-charm", "resume"],
+)
+def test_event_applies_proxy_settings(make_event):
+    """Test that each reconciling event gives the workload the model's proxy settings."""
+    ctx = testing.Context(BooMachineCharm)
+
+    ctx.run(make_event(ctx), make_state(PROXY_CONFIG))
+
+    assert get_workload_environment() == EXPECTED_PROXY_ENVIRONMENT
+
+
+@pytest.mark.parametrize("proxy_config", [None, testing.ProxyConfig()])
+def test_no_proxy_settings(proxy_config: testing.ProxyConfig | None, fake_machine):
+    """Test that the workload gets no proxy variables if the model has no proxy settings."""
+    # Both None and the default ProxyConfig mean that the user hasn't set a proxy.
+    ctx = testing.Context(BooMachineCharm)
+
+    ctx.run(ctx.on.update_status(), make_state(proxy_config))
+
+    assert get_workload_environment() == {}
+    assert not boo.PROXY_DROP_IN.exists()
+    assert fake_machine == []  # Nothing changed, so the workload isn't touched.
+
+
+def test_update_status_picks_up_set_change_and_unset(fake_machine: list[tuple[str, ...]]):
+    """Test that the workload follows the model's settings as they are set, changed and unset."""
+    ctx = testing.Context(BooMachineCharm)
+    state = ctx.run(ctx.on.update_status(), make_state(None))
+    assert get_workload_environment() == {}
+    assert fake_machine == []
+
+    # The user sets the proxy settings. The charm doesn't get an event for this.
+    state = ctx.run(ctx.on.update_status(), with_proxy_config(state, PROXY_CONFIG))
+    assert get_workload_environment() == EXPECTED_PROXY_ENVIRONMENT
+    assert fake_machine == RELOAD_AND_RESTART
+
+    # The user changes one of the settings.
+    fake_machine.clear()
+    changed = testing.ProxyConfig(
+        http=PROXY_CONFIG.http, https="http://other.internal:3129", no=()
+    )
+    state = ctx.run(ctx.on.update_status(), with_proxy_config(state, changed))
+    environment = get_workload_environment()
+    assert environment["HTTPS_PROXY"] == "http://other.internal:3129"
+    assert environment["HTTP_PROXY"] == PROXY_CONFIG.http
+    assert fake_machine == RELOAD_AND_RESTART
+
+    # The user resets the settings: nothing is left behind.
+    fake_machine.clear()
+    state = ctx.run(ctx.on.update_status(), with_proxy_config(state, None))
+    assert get_workload_environment() == {}
+    assert not boo.PROXY_DROP_IN.exists()
+    assert fake_machine == RELOAD_AND_RESTART
+
+
+def test_update_status_unsets_one_setting_at_a_time():
+    """Test that removing one setting leaves the others in place."""
+    ctx = testing.Context(BooMachineCharm)
+    state = ctx.run(ctx.on.update_status(), make_state(PROXY_CONFIG))
+
+    without_https = testing.ProxyConfig(http=PROXY_CONFIG.http, no=PROXY_CONFIG.no)
+    ctx.run(ctx.on.update_status(), with_proxy_config(state, without_https))
+
+    environment = get_workload_environment()
+    assert "HTTPS_PROXY" not in environment
+    assert "https_proxy" not in environment
+    assert environment["HTTP_PROXY"] == "http://squid.internal:3128"
+    assert environment["NO_PROXY"] == "127.0.0.1,localhost,::1,10.0.0.0/8"
+
+
+def test_unchanged_settings_do_not_restart_the_workload(fake_machine: list[tuple[str, ...]]):
+    """Test that handling events with unchanged settings leaves the workload alone."""
+    ctx = testing.Context(BooMachineCharm)
+    state = ctx.run(ctx.on.update_status(), make_state(PROXY_CONFIG))
+    assert fake_machine == RELOAD_AND_RESTART
+    content = boo.PROXY_DROP_IN.read_text()
+    fake_machine.clear()
+
+    for make_event in (ctx.on.update_status, ctx.on.config_changed, ctx.on.update_status):
+        state = ctx.run(make_event(), state)
+
+    assert fake_machine == []
+    assert boo.PROXY_DROP_IN.read_text() == content
+
+
+def test_start_does_not_restart_a_workload_that_is_not_running(fake_machine):
+    """Test that the first start only starts the workload, with the settings already in place."""
+    ctx = testing.Context(BooMachineCharm)
+
+    ctx.run(ctx.on.start(), make_state(PROXY_CONFIG))
+
+    assert get_workload_environment() == EXPECTED_PROXY_ENVIRONMENT
+    assert fake_machine[-1] == ("enable", "--now", boo.SERVICE_NAME)
+
+
+def test_drop_in_is_private_and_escapes_specifiers():
+    """Test that the file with the proxy URL is private, and systemd can't expand its values."""
+    ctx = testing.Context(BooMachineCharm)
+    proxy_config = testing.ProxyConfig(https="http://user:p%40ss@proxy.internal:3128")
+
+    ctx.run(ctx.on.update_status(), make_state(proxy_config))
+
+    assert boo.PROXY_DROP_IN.stat().st_mode & 0o777 == 0o600
+    assert "user:p%%40ss@proxy.internal" in boo.PROXY_DROP_IN.read_text()
+
+
+def test_show_proxy_action(monkeypatch: pytest.MonkeyPatch):
+    """Test that the show-proxy action reports what the workload serves."""
+    # Arrange:
+    ctx = testing.Context(BooMachineCharm)
+    served = {"proxy.txt": "http_proxy=http://squid.internal:3128", "started.txt": "123"}
+    monkeypatch.setattr("charm.boo.read_report", served.__getitem__)
+
+    # Act:
+    ctx.run(ctx.on.action("show-proxy"), testing.State())
+
+    # Assert:
+    assert ctx.action_results == {"proxy": served["proxy.txt"], "started": "123"}
+
+
+def test_show_proxy_action_workload_down(monkeypatch: pytest.MonkeyPatch):
+    """Test that the show-proxy action fails if the workload can't be reached."""
+
+    def unreachable(name: str) -> str:
+        raise urllib.error.URLError("connection refused")
+
+    # Arrange:
+    ctx = testing.Context(BooMachineCharm)
+    monkeypatch.setattr("charm.boo.read_report", unreachable)
+
+    # Act & assert:
+    with pytest.raises(testing.ActionFailed) as exc_info:
+        ctx.run(ctx.on.action("show-proxy"), testing.State())
+    assert "cannot read from the workload" in exc_info.value.message
+
+
+def test_proxy_settings_are_visible_in_the_charm():
+    """Test that the charm reads the settings from the model."""
+    # Arrange:
+    ctx = testing.Context(BooMachineCharm)
+
+    # Act and assert:
+    with ctx(ctx.on.config_changed(), make_state(PROXY_CONFIG)) as manager:
+        assert manager.charm.model.proxy_config.http == "http://squid.internal:3128"
+        manager.run()
+
+
+def test_read_report_bypasses_the_proxy(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path):
+    """Test that the charm reads the workload directly, even if the environment has a proxy."""
+    # Arrange — a real web server, like the workload, and a proxy variable that points nowhere:
+    (tmp_path / "proxy.txt").write_text("no proxy configured\n")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setattr(boo, "PORT", server.server_port)
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:9")
+
+    # Act & assert:
+    try:
+        assert boo.read_report("proxy.txt") == "no proxy configured"
+    finally:
+        server.shutdown()
+        server.server_close()

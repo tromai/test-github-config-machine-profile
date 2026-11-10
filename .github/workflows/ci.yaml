@@ -46,8 +46,7 @@ jobs:
     needs: [lint, unit]
     uses: $/.github/workflows/integration.yaml
     with:
-      # For a machine charm, set concierge-preset to "machine".
-      concierge-preset: k8s
+      concierge-preset: machine
 
   publish:
     name: Publish

@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.11'",
@@ -38,7 +38,7 @@ unit = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "ops", specifier = "~=3.8" }]
+requires-dist = [{ name = "ops", git = "https://github.com/tromai/operator?branch=model-juju-proxy-model-config-in-ops" }]
 
 [package.metadata.requires-dev]
 ci = [
@@ -59,7 +59,7 @@ lint = [
 ]
 unit = [
     { name = "coverage", extras = ["toml"], specifier = ">=7.16.2,<8" },
-    { name = "ops", extras = ["testing"] },
+    { name = "ops", extras = ["testing"], git = "https://github.com/tromai/operator?branch=model-juju-proxy-model-config-in-ops" },
     { name = "pytest", specifier = ">=9.1,<10" },
 ]
 
@@ -662,16 +662,12 @@ wheels = [
 
 [[package]]
 name = "ops"
-version = "3.9.0"
-source = { registry = "https://pypi.org/simple" }
+version = "3.10.0.dev0"
+source = { git = "https://github.com/tromai/operator?branch=model-juju-proxy-model-config-in-ops#8ce072943ad543fae02a57f8a3bdb5e56443e136" }
 dependencies = [
     { name = "opentelemetry-api" },
     { name = "pyyaml" },
     { name = "websocket-client" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0f/03/d87306f7e704a0f75f461d40d6141bfbd1ea38ba329ca0e88f6c3a20cfd5/ops-3.9.0.tar.gz", hash = "sha256:f8fd7fa05359e9fc057663b1a652602f5803db0b37e1bbfe9b63971c54e4b3b3", size = 420379, upload-time = "2026-10-08T05:36:18.184Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/2f/faf83b14fd88c0e5ae26a4f5eb66f06f708fe322223823acfd45f8d32594/ops-3.9.0-py3-none-any.whl", hash = "sha256:2dc7a77edae408886ccd348be590df0e03589dfe5e3e115e238d5746850eed0c", size = 219271, upload-time = "2026-10-08T05:36:14.03Z" },
 ]
 
 [package.optional-dependencies]
@@ -681,16 +677,12 @@ testing = [
 
 [[package]]
 name = "ops-scenario"
-version = "8.9.0"
-source = { registry = "https://pypi.org/simple" }
+version = "8.10.0.dev0"
+source = { git = "https://github.com/tromai/operator?subdirectory=testing&branch=model-juju-proxy-model-config-in-ops#8ce072943ad543fae02a57f8a3bdb5e56443e136" }
 dependencies = [
     { name = "ops" },
     { name = "pyyaml" },
     { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/2c/c7/51b9878f732ffb5363ec34c9a078db3f8fbb691c1fc3d225d959d1f9c6c0/ops_scenario-8.9.0.tar.gz", hash = "sha256:08e4aae5d6306f0a0b772c806d6f72d8238e106459303d2fb9288b72cbcc348f", size = 132424, upload-time = "2026-10-08T05:36:19.545Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/2b/f8/2c2d655af358c708e49f8bffa0f40b4fa81e84ad9c234372543f143bc737/ops_scenario-8.9.0-py3-none-any.whl", hash = "sha256:a6ff1ed5d0f71b419cf9aa36c85094afbd4fb44bae0567a151634f8d0dde2351", size = 75885, upload-time = "2026-10-08T05:36:15.641Z" },
 ]
 
 [[package]]

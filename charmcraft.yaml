@@ -29,6 +29,10 @@ parts:
     source: .
     build-snaps:
       - astral-uv
+    # 'git' is needed to install ops from the Git branch that pyproject.toml pins. Remove this
+    # once ops is pinned to a released version again.
+    build-packages:
+      - git
 
 # (Optional) Configuration options for the charm
 # This config section defines charm config options, and populates the Configure
@@ -74,3 +78,10 @@ actions:
   resume:
     description: |
       Start the workload after running the pause action.
+  show-proxy:
+    description: |
+      Show the proxy settings that the running workload received.
+
+      The workload is a web server that writes the proxy environment variables that it started
+      with to a file. This action reads the file over HTTP. The 'started' result changes
+      whenever the workload restarts.
