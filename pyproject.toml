@@ -43,6 +43,12 @@ ci = [
     "zizmor>=1.30,<2",
 ]
 
+# Pin ops (and the ops-scenario testing framework behind 'ops[testing]') to the development
+# branch that adds Model.proxy_config. Remove this block once the feature is released.
+[tool.uv.sources]
+ops = { git = "https://github.com/tromai/operator", branch = "model-juju-proxy-model-config-in-ops" }
+ops-scenario = { git = "https://github.com/tromai/operator", subdirectory = "testing", branch = "model-juju-proxy-model-config-in-ops" }
+
 # Testing tools configuration
 [tool.coverage.run]
 branch = true
