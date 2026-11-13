@@ -16,11 +16,44 @@ import pytest
 logger = logging.getLogger(__name__)
 
 
+def has_log_level_status(status: jubilant.Status, log_level: str) -> bool:
+    """Return whether the unit handled config-changed with the given log level."""
+    unit = status.apps["boo-machine"].units["boo-machine/0"]
+    return unit.workload_status.current == "active" and unit.workload_status.message == (
+        f"config-changed: log-level={log_level}"
+    )
+
+
 @pytest.mark.juju_setup
 def test_deploy(charm: pathlib.Path, juju: jubilant.Juju):
     """Deploy the charm under test."""
     juju.deploy(charm, app="boo-machine")
     juju.wait(jubilant.all_active)
+
+
+def test_config_reset_fires_config_changed(juju: jubilant.Juju):
+    """Resetting config must notify the unit, including on Juju 4.x."""
+    juju.config("boo-machine", {"log-level": "debug"})
+    juju.wait(
+        lambda status: has_log_level_status(status, "debug"),
+        error=jubilant.any_error,
+        timeout=60,
+    )
+
+    # This invokes `juju config boo-machine --reset log-level`. The server-side value returns
+    # to its default on affected Juju 4.x versions, but no config-changed hook is dispatched.
+    juju.config("boo-machine", reset=["log-level"])
+    config = juju.config("boo-machine")
+    assert config is not None
+    assert config["log-level"] == "info"
+
+    # Passes on Juju 3.x. On affected Juju 4.x versions this times out with the workload status
+    # still saying "debug", reproducing the missing config-changed notification.
+    juju.wait(
+        lambda status: has_log_level_status(status, "info"),
+        error=jubilant.any_error,
+        timeout=30,
+    )
 
 
 def test_pause_and_resume(charm: pathlib.Path, juju: jubilant.Juju):

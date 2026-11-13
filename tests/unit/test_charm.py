@@ -84,6 +84,16 @@ def test_start_app_secret_already_exists(monkeypatch: pytest.MonkeyPatch):
     assert len(app_secrets) == 1
 
 
+def test_config_changed_reports_log_level():
+    """Test that config-changed exposes the observed log level in workload status."""
+    ctx = testing.Context(BooMachineCharm)
+    state_in = testing.State(config={"log-level": "debug"})
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == testing.ActiveStatus("config-changed: log-level=debug")
+
+
 def test_config_changed_with_api_token():
     """Test that config-changed resolves a user-provided secret and goes active."""
     # Arrange:
