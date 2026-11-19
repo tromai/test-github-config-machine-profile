@@ -73,6 +73,11 @@ class BooMachineCharm(ops.CharmBase):
 
     def _on_config_changed(self, event: ops.ConfigChangedEvent):
         """Handle config-changed event — api-token might now hold a different secret's ID."""
+        log_level = self.config.get("log-level")
+        if isinstance(log_level, str):
+            # Make hook delivery observable in integration tests. A more specific status set by
+            # _configure_api_token below takes precedence over this generic config status.
+            self.unit.status = ops.ActiveStatus(f"config-changed: log-level={log_level}")
         self._configure_api_token()
 
     def _on_secret_changed(self, event: ops.SecretChangedEvent):
