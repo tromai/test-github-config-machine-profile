@@ -13,6 +13,8 @@ requires-python = ">=3.10"
 # 'charm-libs' block in charmcraft.yaml, run `charmcraft fetch-libs` to download the libraries,
 # then inspect the libraries for dependencies specified in PYDEPS. List those dependencies here.
 dependencies = [
+    "charmlibs-pathops~=1.4",
+    "charmlibs-systemd~=1.0",
     "ops~=3.8",
 ]
 
@@ -42,6 +44,12 @@ ci = [
     "tox-uv>=1.36,<2",
     "zizmor>=1.30,<2",
 ]
+
+# Pin ops (and the ops-scenario testing framework behind 'ops[testing]') to the development
+# branch of ops that adds Model.proxy_config. Remove this block once ops 3.10 is released.
+[tool.uv.sources]
+ops = { git = "https://github.com/canonical/operator", branch = "main" }
+ops-scenario = { git = "https://github.com/canonical/operator", subdirectory = "testing", branch = "main" }
 
 # Testing tools configuration
 [tool.coverage.run]

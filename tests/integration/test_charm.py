@@ -64,6 +64,46 @@ def test_user_secret(charm: pathlib.Path, juju: jubilant.Juju):
     juju.wait(jubilant.all_active)
 
 
+SERVICE = "boo-workload.service"
+UNIT = "boo-machine/0"
+PROXY_URL = "http://proxy.example.com:3128"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def frequent_update_status(juju: jubilant.Juju):
+    """Run update-status every 10 seconds, so the charm reads the new proxy configs sooner."""
+    juju.model_config({"update-status-hook-interval": "10s"})
+    yield
+    juju.model_config(reset="update-status-hook-interval")
+
+
+def workload_environment(juju: jubilant.Juju) -> dict[str, str]:
+    """Return the environment of the running workload process."""
+    pid = juju.ssh(UNIT, "systemctl", "show", SERVICE, "--property=MainPID", "--value")
+    environ = juju.ssh(UNIT, "sudo", "cat", f"/proc/{pid.strip()}/environ")
+    return dict(entry.split("=", 1) for entry in environ.split("\0") if "=" in entry)
+
+
+def test_proxy_configs_reach_the_workload(juju: jubilant.Juju):
+    """Test that the workload gets the proxy configs of the model."""
+    juju.model_config({"juju-https-proxy": PROXY_URL})
+    juju.wait(
+        lambda _: workload_environment(juju).get("HTTPS_PROXY") == PROXY_URL,
+        delay=5,
+        timeout=120,
+    )
+
+
+def test_removed_proxy_configs_are_cleared(juju: jubilant.Juju):
+    """Test that the workload loses the proxy configs that the user removed from the model."""
+    juju.model_config(reset="juju-https-proxy")
+    juju.wait(
+        lambda _: workload_environment(juju).get("HTTPS_PROXY") == "",
+        delay=5,
+        timeout=120,
+    )
+
+
 # If you implement boo.get_version in the charm source,
 # remove the @pytest.mark.skip line to enable this test.
 # Alternatively, remove this test if you don't need it.

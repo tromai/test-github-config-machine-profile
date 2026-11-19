@@ -4,9 +4,14 @@
 # To learn more about testing, see https://canonical.com/juju/docs/ops/latest/explanation/testing/
 
 import pytest
+from charmlibs import pathops
 from ops import testing
 
+import charm
 from charm import API_TOKEN_LABEL, APP_SECRET_LABEL, BooMachineCharm
+
+# Don't let any test change the machine. See conftest.py.
+pytestmark = pytest.mark.usefixtures("drop_in", "restarted")
 
 
 def mock_get_version():
@@ -234,3 +239,95 @@ def test_secret_remove():
 
     # Assert — the charm asked Juju to remove that revision:
     assert ctx.removed_secret_revisions == [2]
+
+
+PROXY_URL = "http://proxy.example.com:3128"
+
+
+def test_proxy_configs_reach_the_workload(drop_in: pathops.LocalPath, restarted: list[str]):
+    """Test that the proxy configs of the model are in the drop-in file of the service."""
+    # Arrange:
+    ctx = testing.Context(BooMachineCharm)
+    proxy_config = testing.ProxyConfig(https=PROXY_URL, no=("localhost", "10.0.0.0/8"))
+    state_in = testing.State(model=testing.Model(proxy_config=proxy_config))
+
+    # Act:
+    ctx.run(ctx.on.config_changed(), state_in)
+
+    # Assert:
+    content = drop_in.read_text()
+    assert f'Environment="HTTPS_PROXY={PROXY_URL}"' in content
+    assert f'Environment="https_proxy={PROXY_URL}"' in content
+    assert 'Environment="NO_PROXY=10.0.0.0/8,localhost"' in content
+    assert restarted == [charm.SERVICE]
+
+
+def test_removed_proxy_configs_are_cleared(drop_in: pathops.LocalPath, restarted: list[str]):
+    """Test that the drop-in file loses proxy configs that the user removed from the model."""
+    # Arrange: the drop-in file has proxy configs from an earlier event.
+    drop_in.write_text(f'[Service]\nEnvironment="HTTPS_PROXY={PROXY_URL}"\n')
+    ctx = testing.Context(BooMachineCharm)
+    state_in = testing.State(model=testing.Model(proxy_config=testing.ProxyConfig()))
+
+    # Act:
+    ctx.run(ctx.on.update_status(), state_in)
+
+    # Assert:
+    content = drop_in.read_text()
+    assert PROXY_URL not in content
+    assert 'Environment="HTTPS_PROXY="' in content
+    assert restarted == [charm.SERVICE]
+
+
+def test_unchanged_proxy_configs_dont_restart_the_workload(
+    drop_in: pathops.LocalPath, restarted: list[str]
+):
+    """Test that handling an event with unchanged proxy configs leaves the workload alone."""
+    # Arrange:
+    ctx = testing.Context(BooMachineCharm)
+    state_in = testing.State(
+        model=testing.Model(proxy_config=testing.ProxyConfig(https=PROXY_URL)),
+    )
+    ctx.run(ctx.on.config_changed(), state_in)
+    restarted.clear()
+
+    # Act:
+    ctx.run(ctx.on.update_status(), state_in)
+
+    # Assert:
+    assert restarted == []
+
+
+def test_stopped_workload_is_not_restarted(
+    monkeypatch: pytest.MonkeyPatch, drop_in: pathops.LocalPath, restarted: list[str]
+):
+    """Test that new proxy configs don't start a workload that the user paused."""
+    # Arrange:
+    monkeypatch.setattr(charm.systemd, "service_running", lambda service: False)
+    ctx = testing.Context(BooMachineCharm)
+    state_in = testing.State(
+        model=testing.Model(proxy_config=testing.ProxyConfig(https=PROXY_URL)),
+    )
+
+    # Act:
+    ctx.run(ctx.on.update_status(), state_in)
+
+    # Assert — the next start of the workload reads the drop-in file:
+    assert PROXY_URL in drop_in.read_text()
+    assert restarted == []
+
+
+def test_percent_in_proxy_config_is_escaped(drop_in: pathops.LocalPath):
+    """Test that systemd doesn't expand percent-encoded credentials in the proxy URL."""
+    # Arrange:
+    ctx = testing.Context(BooMachineCharm)
+    url = "http://user:p%40ss@proxy.example.com:3128"
+    state_in = testing.State(model=testing.Model(proxy_config=testing.ProxyConfig(http=url)))
+
+    # Act:
+    ctx.run(ctx.on.config_changed(), state_in)
+
+    # Assert:
+    assert 'Environment="HTTP_PROXY=http://user:p%%40ss@proxy.example.com:3128"' in (
+        drop_in.read_text()
+    )
