@@ -9,6 +9,7 @@ import logging
 import secrets
 
 import ops
+from charmlibs import pathops, systemd
 
 # A standalone module for workload-specific logic (no charming concerns):
 import boo
@@ -22,6 +23,9 @@ logger = logging.getLogger(__name__)
 API_TOKEN_LABEL = "api-token"  # Any label works; matching the config option name is clearest.
 APP_SECRET_LABEL = "workload-password"
 
+SERVICE = boo.SERVICE
+PROXY_DROP_IN = pathops.LocalPath(f"/etc/systemd/system/{SERVICE}.d/proxy.conf")
+
 
 class BooMachineCharm(ops.CharmBase):
     """Charm the application."""
@@ -32,11 +36,44 @@ class BooMachineCharm(ops.CharmBase):
         framework.observe(self.on.start, self._on_start)
         framework.observe(self.on["pause"].action, self._on_pause_action)
         framework.observe(self.on["resume"].action, self._on_resume_action)
+        framework.observe(self.on.config_changed, self._reconcile)
+        framework.observe(self.on.update_status, self._reconcile)
         framework.observe(self.on.config_changed, self._on_config_changed)
         framework.observe(self.on.secret_changed, self._on_secret_changed)
         framework.observe(self.on.secret_rotate, self._on_secret_rotate)
         framework.observe(self.on.secret_expired, self._on_secret_expired)
         framework.observe(self.on.secret_remove, self._on_secret_remove)
+
+    def _get_proxy_environ(self) -> dict[str, str]:
+        """Convert the proxy configs of the model into environment variables."""
+        proxy = self.model.proxy_config
+        no_proxy = ",".join(sorted(proxy.no))
+        return {
+            "HTTP_PROXY": proxy.http or "",
+            "HTTPS_PROXY": proxy.https or "",
+            "NO_PROXY": no_proxy,
+            "http_proxy": proxy.http or "",
+            "https_proxy": proxy.https or "",
+            "no_proxy": no_proxy,
+        }
+
+    def _reconcile(self, event: ops.EventBase) -> None:
+        """Make the workload use the current proxy configs of the model."""
+        # Juju doesn't emit an event when the proxy configs change, so the charm can only
+        # notice a change when it handles the next event, such as update-status.
+        lines = ["[Service]"]
+        for name, value in self._get_proxy_environ().items():
+            # systemd expands '%' specifiers in Environment=, and proxy URLs
+            # can contain '%' in percent-encoded credentials.
+            value = value.replace("%", "%%")
+            lines.append(f'Environment="{name}={value}"')
+        # 'ensure_contents' only writes the file if the contents differ.
+        if pathops.ensure_contents(PROXY_DROP_IN, "\n".join(lines) + "\n"):
+            systemd.daemon_reload()
+            # A stopped workload (for example, after the pause action) reads the new proxy
+            # configs when it starts, so only restart a workload that's running.
+            if systemd.service_running(SERVICE):
+                systemd.service_restart(SERVICE)
 
     def _on_install(self, event: ops.InstallEvent):
         """Install the workload on the machine."""
