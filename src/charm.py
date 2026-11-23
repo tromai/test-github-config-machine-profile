@@ -32,7 +32,6 @@ class BooMachineCharm(ops.CharmBase):
 
     def __init__(self, framework: ops.Framework):
         super().__init__(framework)
-        framework.observe(self.on.install, self._on_install)
         framework.observe(self.on.start, self._on_start)
         framework.observe(self.on["pause"].action, self._on_pause_action)
         framework.observe(self.on["resume"].action, self._on_resume_action)
@@ -74,10 +73,6 @@ class BooMachineCharm(ops.CharmBase):
             # configs when it starts, so only restart a workload that's running.
             if systemd.service_running(SERVICE):
                 systemd.service_restart(SERVICE)
-
-    def _on_install(self, event: ops.InstallEvent):
-        """Install the workload on the machine."""
-        boo.install()
 
     def _on_start(self, event: ops.StartEvent):
         """Handle start event."""

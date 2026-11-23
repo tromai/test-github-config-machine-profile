@@ -6,7 +6,6 @@ import pathlib
 import pytest
 from charmlibs import pathops
 
-import boo
 import charm
 
 # Handlers such as config-changed reconcile the proxy configs on the machine. The fixtures here
@@ -19,7 +18,6 @@ def drop_in(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> pathops.
     """Write the drop-in file to a temporary directory instead of /etc/systemd."""
     path = pathops.LocalPath(tmp_path / "proxy.conf")
     monkeypatch.setattr(charm, "PROXY_DROP_IN", path)
-    monkeypatch.setattr(boo, "SERVICE_FILE", pathops.LocalPath(tmp_path / "boo.service"))
     return path
 
 
