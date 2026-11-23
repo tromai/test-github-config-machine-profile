@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 @pytest.mark.juju_setup
 def test_deploy(charm: pathlib.Path, juju: jubilant.Juju):
     """Deploy the charm under test."""
+    if juju.version().major >= 4:
+        # Juju 4 doesn't add the client's SSH key to new models automatically.
+        public_key = pathlib.Path.home() / ".ssh" / "id_rsa.pub"
+        juju.cli("add-ssh-key", public_key.read_text().strip())
     juju.deploy(charm, app="boo-machine")
     juju.wait(jubilant.all_active)
 
