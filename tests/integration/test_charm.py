@@ -50,7 +50,7 @@ def test_user_secret(charm: pathlib.Path, juju: jubilant.Juju):
     juju.wait(jubilant.all_active)
 
     # The charm logs the length of the token it resolved.
-    assert "api-token resolved (10 chars)" in juju.debug_log()
+    juju.wait(lambda _: "api-token resolved (10 chars)" in juju.debug_log(), timeout=30)
 
     # Act — add a new revision of the same secret. Juju notifies the charm with
     # a secret-changed event, and the charm re-reads the content.
@@ -58,7 +58,7 @@ def test_user_secret(charm: pathlib.Path, juju: jubilant.Juju):
     juju.wait(jubilant.all_active)
 
     # Assert — the charm picked up the new revision, not the original one.
-    assert "api-token resolved (25 chars)" in juju.debug_log()
+    juju.wait(lambda _: "api-token resolved (25 chars)" in juju.debug_log(), timeout=30)
 
     # Clean up: reset the config option so subsequent tests start clean.
     juju.config("boo-machine", reset=["api-token"])
@@ -80,7 +80,13 @@ def frequent_update_status(juju: jubilant.Juju):
 
 def workload_environment(juju: jubilant.Juju) -> dict[str, str]:
     """Return the environment that systemd has loaded for the workload service."""
-    output = juju.ssh(UNIT, "systemctl", "show", SERVICE, "--property=Environment", "--value")
+    try:
+        output = juju.ssh(UNIT, "systemctl", "show", SERVICE, "--property=Environment", "--value")
+    except jubilant.CLIError as exc:
+        # Juju 4 can refuse SSH while the machine's authorised keys are still being updated.
+        if "Permission denied (publickey)" not in str(exc):
+            raise
+        return {}
     # Systemctl separates the entries with spaces, and quotes an entry that contains a space.
     return dict(entry.split("=", 1) for entry in shlex.split(output))
 
