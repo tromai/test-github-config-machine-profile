@@ -7,6 +7,7 @@
 import os
 import pathlib
 import subprocess
+from collections.abc import Generator
 from typing import Any
 
 import jubilant
@@ -51,29 +52,34 @@ def ssh_private_key(tmp_path_factory: pytest.TempPathFactory) -> pathlib.Path:
 
 
 @pytest.fixture(scope="module", autouse=True)
-def ssh_access(juju: jubilant.Juju, ssh_private_key: pathlib.Path) -> dict[str, Any]:
-    """Make 'juju ssh' work in the test model, and return the keyword arguments for 'Juju.ssh'.
+def ssh_access(juju: jubilant.Juju, ssh_private_key: pathlib.Path) -> Generator[dict[str, Any]]:
+    """Make 'juju ssh' work in the test model, and yield the keyword arguments for 'Juju.ssh'.
 
     Juju 3.6 adds the SSH key of the client to every new model. Juju 4 doesn't, so the fixture
-    adds a key to the model when 'juju ssh' needs one:
+    adds its own key to the model. This follows the integration tests of Jubilant:
 
-    * Juju 4.0 connects to a machine directly, so a machine model needs a key. A Kubernetes model
-      doesn't, because Juju uses Kubernetes credentials.
-    * From Juju 4.1, 'juju ssh' connects through the SSH server of the controller. Machine and
-      Kubernetes models both need a key, and 'ssh_key' passes the key to the controller.
+    * A machine model needs '-i' for the connection to the machine. Before Juju 4.1, that's a
+      direct connection. From Juju 4.1, it's the final hop after the controller.
+    * From Juju 4.1, 'juju ssh' connects through the SSH server of the controller, and '-i'
+      doesn't apply to that connection. A machine model and a Kubernetes model both need
+      'ssh_key' for it.
+    * Before Juju 4.1, a Kubernetes model needs no key, because Juju uses Kubernetes credentials.
     """
-    version = juju.version().tuple
-    if version >= (4, 1, 0):
-        kwargs: dict[str, Any] = {"ssh_key": ssh_private_key}
-    elif version >= (4, 0, 0) and juju.show_model().model_type == "iaas":
-        kwargs = {"ssh_options": ["-i", str(ssh_private_key)]}
-    else:
-        return {}
+    kwargs: dict[str, Any] = {}
+    if juju.show_model().model_type == "iaas":
+        kwargs["ssh_options"] = ["-i", str(ssh_private_key)]
+    if juju.version().tuple >= (4, 1, 0):
+        kwargs["ssh_key"] = ssh_private_key
+    if not kwargs:
+        yield kwargs
+        return
 
     public_key = pathlib.Path(f"{ssh_private_key}.pub").read_text().strip()
     key_data = public_key.split()[1]
-    if key_data not in juju.cli("ssh-keys", "--full"):
-        juju.add_ssh_key(public_key)
-        # 'juju add-ssh-key' exits with 0 even if the controller rejects the key.
-        assert key_data in juju.cli("ssh-keys", "--full"), "Juju didn't add the SSH key"
-    return kwargs
+    juju.add_ssh_key(public_key)
+    # 'juju add-ssh-key' exits with 0 even if the controller rejects the key.
+    assert key_data in juju.cli("ssh-keys", "--full"), "Juju didn't add the SSH key"
+    try:
+        yield kwargs
+    finally:
+        juju.remove_ssh_key(public_key)
