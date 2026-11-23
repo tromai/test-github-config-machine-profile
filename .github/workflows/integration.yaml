@@ -23,7 +23,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        juju-version: ["3.6", "4.0"]
+        include:
+          - juju-version: "3.6"
+            juju-channel: 3.6/stable
+          - juju-version: "4.0"
+            juju-channel: 4.0/stable
+          # Juju 4.1 isn't released yet, so use the edge channel. Change this to 4.1/stable
+          # when the release is available.
+          - juju-version: "4.1"
+            juju-channel: 4.1/edge
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.juju-version }}
       cancel-in-progress: true
@@ -42,7 +50,7 @@ jobs:
       - name: Set up Juju and charm development tools
         env:
           CONCIERGE_PRESET: ${{ inputs.concierge-preset }}
-          JUJU_CHANNEL: ${{ matrix.juju-version }}/stable
+          JUJU_CHANNEL: ${{ matrix.juju-channel }}
         run: sudo concierge prepare -p "$CONCIERGE_PRESET" --juju-channel "$JUJU_CHANNEL"
 
       - name: Pack the charm
