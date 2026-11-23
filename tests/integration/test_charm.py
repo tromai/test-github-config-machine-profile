@@ -91,6 +91,21 @@ def workload_environment(juju: jubilant.Juju) -> dict[str, str]:
     return dict(entry.split("=", 1) for entry in shlex.split(output))
 
 
+def wait_for_workload_environment(juju: jubilant.Juju, expected: dict[str, str]) -> None:
+    """Wait for the proxy environment, and include the last value in a failure message."""
+    seen: dict[str, str] = {}
+
+    def environment_matches(_) -> bool:
+        nonlocal seen
+        seen = workload_environment(juju)
+        return seen.items() >= expected.items()
+
+    try:
+        juju.wait(environment_matches, delay=5, timeout=120)
+    except TimeoutError:
+        pytest.fail(f"The workload didn't get {expected}. Last seen: {seen}")
+
+
 def test_proxy_configs(juju: jubilant.Juju):
     """Test that the workload gets and clears the proxy configs of the model."""
     juju.model_config({"juju-https-proxy": PROXY_URL, "juju-no-proxy": "localhost,10.0.0.0/8"})
@@ -102,11 +117,7 @@ def test_proxy_configs(juju: jubilant.Juju):
         "https_proxy": PROXY_URL,
         "no_proxy": "10.0.0.0/8,localhost",
     }
-    juju.wait(
-        lambda _: workload_environment(juju).items() >= expected.items(),
-        delay=5,
-        timeout=120,
-    )
+    wait_for_workload_environment(juju, expected)
 
     # Removed proxy configs are cleared, and juju-no-proxy returns to the Juju default.
     juju.model_config(reset=["juju-https-proxy", "juju-no-proxy"])
@@ -118,11 +129,7 @@ def test_proxy_configs(juju: jubilant.Juju):
         "https_proxy": "",
         "no_proxy": "127.0.0.1,::1,localhost",
     }
-    juju.wait(
-        lambda _: workload_environment(juju).items() >= expected.items(),
-        delay=5,
-        timeout=120,
-    )
+    wait_for_workload_environment(juju, expected)
 
 
 # If you implement boo.get_version in the charm source,
