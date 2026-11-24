@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.11'",
@@ -11,6 +11,8 @@ name = "boo-machine"
 version = "0.0.1"
 source = { virtual = "." }
 dependencies = [
+    { name = "charmlibs-pathops" },
+    { name = "charmlibs-systemd" },
     { name = "ops" },
 ]
 
@@ -38,7 +40,11 @@ unit = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "ops", specifier = "~=3.8" }]
+requires-dist = [
+    { name = "charmlibs-pathops", specifier = "~=1.4" },
+    { name = "charmlibs-systemd", specifier = "~=1.0" },
+    { name = "ops", git = "https://github.com/canonical/operator?branch=main" },
+]
 
 [package.metadata.requires-dev]
 ci = [
@@ -48,7 +54,7 @@ ci = [
     { name = "zizmor", specifier = ">=1.30,<2" },
 ]
 integration = [
-    { name = "jubilant", specifier = ">=1.11,<2" },
+    { name = "jubilant", specifier = ">=1.15,<2" },
     { name = "pytest", specifier = ">=9.1,<10" },
     { name = "pytest-jubilant", specifier = ">=2.1,<3" },
 ]
@@ -59,7 +65,7 @@ lint = [
 ]
 unit = [
     { name = "coverage", extras = ["toml"], specifier = ">=7.16.2,<8" },
-    { name = "ops", extras = ["testing"] },
+    { name = "ops", extras = ["testing"], git = "https://github.com/canonical/operator?branch=main" },
     { name = "pytest", specifier = ">=9.1,<10" },
 ]
 
@@ -106,6 +112,27 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7e/eb/a2aa1ac3ea30dd3f30ca57f40232138b6b0040719316ecb85daf61167771/certifi-2026.10.18.tar.gz", hash = "sha256:b9995d97b64d0431a5af837d8ca8cd6238104d1f319f04bd93ea43124d6c861e", size = 135227, upload-time = "2026-10-18T16:21:07.655Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/08/ba/95dd616042484f7c83a06974388b37b837732740ee70bc5dc715b5fcd55a/certifi-2026.10.18-py3-none-any.whl", hash = "sha256:73191c47aaa79da394e8fee2dbc2ec827432cab56311122c9e47abf79e390f62", size = 134093, upload-time = "2026-10-18T16:21:06.276Z" },
+]
+
+[[package]]
+name = "charmlibs-pathops"
+version = "1.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ops" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/22/2a/93d0c5dc9a4055ba74233e4574e9b27fa609b07f5926579b4f9c8bc1d642/charmlibs_pathops-1.4.1.tar.gz", hash = "sha256:443fa7f6a9b818c0030a674e7fe8622ea2a4d253c3820b4e414bfa84dd221f12", size = 23018, upload-time = "2026-11-10T07:15:42.309Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b1/6c/91f89642f07d6865651ec8528206a86d0b105b2bb3fca61d83b752231f3a/charmlibs_pathops-1.4.1-py3-none-any.whl", hash = "sha256:ceb960fbc1ac58b337cb7fcb561d6a56a1952d4f6c7a009cc6f754aaaa6964d5", size = 28072, upload-time = "2026-11-10T07:15:41.164Z" },
+]
+
+[[package]]
+name = "charmlibs-systemd"
+version = "1.0.0.post0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e1/8b/b46c17c458b109dbb9590e994de765fedfa609cee93d6e7cfabe3d599adc/charmlibs_systemd-1.0.0.post0.tar.gz", hash = "sha256:0f978a103524fe1ef34c350930b29b45677ae5c175368e86cea7a1530ccaa0b5", size = 15819, upload-time = "2026-06-16T05:39:46.401Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8c/de/97cb49c150b8c1592483bde9370ce46462be8f6f9c3a8a52748f131fdc56/charmlibs_systemd-1.0.0.post0-py3-none-any.whl", hash = "sha256:9e7578b98344ab237fdc6e48491f98fd80239b8802feb72c5c0ff3a9f70019da", size = 4951, upload-time = "2026-06-16T05:39:45.389Z" },
 ]
 
 [[package]]
@@ -498,14 +525,14 @@ wheels = [
 
 [[package]]
 name = "jubilant"
-version = "1.14.0"
+version = "1.15.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1d/f1/f9d7581e6bea4ca89bb1c9aca3309629047f3bb0c49ddb0cabe33889d9fd/jubilant-1.14.0.tar.gz", hash = "sha256:d7fb046c716640ccd39c072dc1471de84cc54d78e331cc18d422ca7a5b72b378", size = 37181, upload-time = "2026-09-29T23:03:24.598Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/40/78/593575bdce4aa6a4db1a197937be9eea191d54d86e9ec67838f4c11af111/jubilant-1.15.0.tar.gz", hash = "sha256:5b7a6c4be94a859736822f7b3bb3e4a12da4c01e8c81fdb42f517d15e89d87dd", size = 37932, upload-time = "2026-11-20T01:58:51.406Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/23/d4/6effc16acb9fff30603c46270ab58f48c812ba1f567025f22ab5eb96c91a/jubilant-1.14.0-py3-none-any.whl", hash = "sha256:2a631fb2363cdd26c0dea52659b5a8946e36f57fec922895521ab59bda6398e8", size = 39483, upload-time = "2026-09-29T23:03:23.102Z" },
+    { url = "https://files.pythonhosted.org/packages/34/22/0ad8ad38f7630db84c8d8161c52ff9ade7af2b3726b471afa8d1fde94cd8/jubilant-1.15.0-py3-none-any.whl", hash = "sha256:59689b98a5960082d06941d6bd9f6842465481d9d6a78451842984de2d16a3a9", size = 40152, upload-time = "2026-11-20T01:58:50.273Z" },
 ]
 
 [[package]]
@@ -662,16 +689,12 @@ wheels = [
 
 [[package]]
 name = "ops"
-version = "3.9.0"
-source = { registry = "https://pypi.org/simple" }
+version = "3.10.0.dev0"
+source = { git = "https://github.com/canonical/operator?branch=main#9ddfe17174e7926b73458742ac6244114b433d8e" }
 dependencies = [
     { name = "opentelemetry-api" },
     { name = "pyyaml" },
     { name = "websocket-client" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0f/03/d87306f7e704a0f75f461d40d6141bfbd1ea38ba329ca0e88f6c3a20cfd5/ops-3.9.0.tar.gz", hash = "sha256:f8fd7fa05359e9fc057663b1a652602f5803db0b37e1bbfe9b63971c54e4b3b3", size = 420379, upload-time = "2026-10-08T05:36:18.184Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/2f/faf83b14fd88c0e5ae26a4f5eb66f06f708fe322223823acfd45f8d32594/ops-3.9.0-py3-none-any.whl", hash = "sha256:2dc7a77edae408886ccd348be590df0e03589dfe5e3e115e238d5746850eed0c", size = 219271, upload-time = "2026-10-08T05:36:14.03Z" },
 ]
 
 [package.optional-dependencies]
@@ -681,16 +704,12 @@ testing = [
 
 [[package]]
 name = "ops-scenario"
-version = "8.9.0"
-source = { registry = "https://pypi.org/simple" }
+version = "8.10.0.dev0"
+source = { git = "https://github.com/canonical/operator?subdirectory=testing&branch=main#9ddfe17174e7926b73458742ac6244114b433d8e" }
 dependencies = [
     { name = "ops" },
     { name = "pyyaml" },
     { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/2c/c7/51b9878f732ffb5363ec34c9a078db3f8fbb691c1fc3d225d959d1f9c6c0/ops_scenario-8.9.0.tar.gz", hash = "sha256:08e4aae5d6306f0a0b772c806d6f72d8238e106459303d2fb9288b72cbcc348f", size = 132424, upload-time = "2026-10-08T05:36:19.545Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/2b/f8/2c2d655af358c708e49f8bffa0f40b4fa81e84ad9c234372543f143bc737/ops_scenario-8.9.0-py3-none-any.whl", hash = "sha256:a6ff1ed5d0f71b419cf9aa36c85094afbd4fb44bae0567a151634f8d0dde2351", size = 75885, upload-time = "2026-10-08T05:36:15.641Z" },
 ]
 
 [[package]]
@@ -861,15 +880,15 @@ wheels = [
 
 [[package]]
 name = "pytest-jubilant"
-version = "2.3.0"
+version = "2.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jubilant" },
     { name = "pytest" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ba/d7/e3f8f1a2d067e22e4a1e5df062190e226d8e787a4f5e5ec435253131c09b/pytest_jubilant-2.3.0.tar.gz", hash = "sha256:cc893b572f3a774c1f12b7bb03decd95f47f7949ac43e73d099ea9a24ed0b24d", size = 19097, upload-time = "2026-09-03T02:21:03.712Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/91/f9f1e4cc34f9b4fcde0b0a3faced98178eb04ce7db64bf9d0c1121ebdf5d/pytest_jubilant-2.3.1.tar.gz", hash = "sha256:cc34837c191dbf500db77a1c010fbb49ad712513252851e386b6de3487a38073", size = 19180, upload-time = "2026-11-13T01:36:05.805Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b1/9b/4f627e9c429577e06362ca94369ed99046c26f45342c78841f9e72bb53ff/pytest_jubilant-2.3.0-py3-none-any.whl", hash = "sha256:259547881d0a91f671fa042ec52ba2d9419c650e5ba5efa62d59fc83b888c984", size = 15218, upload-time = "2026-09-03T02:21:02.539Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/86/17ed460bb5b4572f3da7d1a8fc80da857cb06877f5a764440d84a1bb791b/pytest_jubilant-2.3.1-py3-none-any.whl", hash = "sha256:e8ce3aa4bafaf638c7e66ff44a9cba8b76802a5339003c70e7e14eb735e16bec", size = 15089, upload-time = "2026-11-13T01:36:04.698Z" },
 ]
 
 [[package]]

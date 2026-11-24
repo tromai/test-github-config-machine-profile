@@ -9,6 +9,8 @@
 
 import logging
 import pathlib
+import shlex
+from typing import Any
 
 import jubilant
 import pytest
@@ -49,7 +51,7 @@ def test_user_secret(charm: pathlib.Path, juju: jubilant.Juju):
     juju.wait(jubilant.all_active)
 
     # The charm logs the length of the token it resolved.
-    assert "api-token resolved (10 chars)" in juju.debug_log()
+    juju.wait(lambda _: "api-token resolved (10 chars)" in juju.debug_log(), timeout=30)
 
     # Act — add a new revision of the same secret. Juju notifies the charm with
     # a secret-changed event, and the charm re-reads the content.
@@ -57,11 +59,89 @@ def test_user_secret(charm: pathlib.Path, juju: jubilant.Juju):
     juju.wait(jubilant.all_active)
 
     # Assert — the charm picked up the new revision, not the original one.
-    assert "api-token resolved (25 chars)" in juju.debug_log()
+    juju.wait(lambda _: "api-token resolved (25 chars)" in juju.debug_log(), timeout=30)
 
     # Clean up: reset the config option so subsequent tests start clean.
     juju.config("boo-machine", reset=["api-token"])
     juju.wait(jubilant.all_active)
+
+
+SERVICE = "snapd.service"
+UNIT = "boo-machine/0"
+PROXY_URL = "http://proxy.example.com:3128"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def frequent_update_status(juju: jubilant.Juju):
+    """Run update-status every minute, so the charm reads the new proxy configs sooner."""
+    juju.model_config({"update-status-hook-interval": "1m"})
+    yield
+    juju.model_config(reset="update-status-hook-interval")
+
+
+def workload_environment(juju: jubilant.Juju, ssh_access: dict[str, Any]) -> dict[str, str]:
+    """Return the environment that systemd has loaded for the workload service."""
+    try:
+        output = juju.ssh(
+            UNIT, "systemctl", "show", SERVICE, "--property=Environment", "--value", **ssh_access
+        )
+    except jubilant.CLIError as exc:
+        # Juju 4 can refuse SSH while the machine's authorised keys are still being updated.
+        if "Permission denied (publickey)" not in str(exc):
+            raise
+        logger.info("juju ssh was refused: %s", exc)
+        return {}
+    # Systemctl separates the entries with spaces, and quotes an entry that contains a space.
+    logger.info("workload environment: %r", output)
+    # Ignore any token that isn't 'NAME=value', such as a stray line from 'juju ssh'.
+    return dict(entry.split("=", 1) for entry in shlex.split(output) if "=" in entry)
+
+
+def wait_for_workload_environment(
+    juju: jubilant.Juju, ssh_access: dict[str, Any], expected: dict[str, str]
+) -> None:
+    """Wait for the proxy environment, and include the last value in a failure message."""
+    seen: dict[str, str] = {}
+
+    def environment_matches(_) -> bool:
+        nonlocal seen
+        seen = workload_environment(juju, ssh_access)
+        return seen.items() >= expected.items()
+
+    try:
+        juju.wait(environment_matches, delay=5, timeout=300)
+    except TimeoutError:
+        pytest.fail(f"The workload didn't get {expected}. Last seen: {seen}")
+
+
+def test_proxy_configs(juju: jubilant.Juju, ssh_access: dict[str, Any]):
+    """Test that the workload gets and clears the proxy configs of the model."""
+    try:
+        juju.model_config({"juju-https-proxy": PROXY_URL, "juju-no-proxy": "localhost,10.0.0.0/8"})
+        expected = {
+            "HTTP_PROXY": "",
+            "HTTPS_PROXY": PROXY_URL,
+            "NO_PROXY": "10.0.0.0/8,localhost",
+            "http_proxy": "",
+            "https_proxy": PROXY_URL,
+            "no_proxy": "10.0.0.0/8,localhost",
+        }
+        wait_for_workload_environment(juju, ssh_access, expected)
+
+        # Removed proxy configs are cleared, and juju-no-proxy returns to the Juju default.
+        juju.model_config(reset=["juju-https-proxy", "juju-no-proxy"])
+        expected = {
+            "HTTP_PROXY": "",
+            "HTTPS_PROXY": "",
+            "NO_PROXY": "127.0.0.1,::1,localhost",
+            "http_proxy": "",
+            "https_proxy": "",
+            "no_proxy": "127.0.0.1,::1,localhost",
+        }
+        wait_for_workload_environment(juju, ssh_access, expected)
+    finally:
+        # Reset the proxy configs, even if the test fails, so later tests start clean.
+        juju.model_config(reset=["juju-https-proxy", "juju-no-proxy"])
 
 
 # If you implement boo.get_version in the charm source,

@@ -6,7 +6,13 @@
 
 import os
 import pathlib
+import shutil
+import subprocess
+import tempfile
+from collections.abc import Generator
+from typing import Any
 
+import jubilant
 import pytest
 
 
@@ -23,3 +29,73 @@ def charm():
     path = pathlib.Path(charm).resolve()
     assert path.is_file(), f"{path} is not a file"
     return path
+
+
+def snap_safe_temp_dir() -> pathlib.Path:
+    """Return a directory that the Juju CLI can read, even when Juju is a confined snap.
+
+    A strictly confined snap has its own private '/tmp', so it can't read files that the tests
+    write there. Jubilant puts such files in '~/snap/juju/common', and this does the same.
+    """
+    if "/snap/" in (shutil.which("juju") or ""):
+        path = pathlib.Path("~/snap/juju/common").expanduser()
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    return pathlib.Path(tempfile.gettempdir())
+
+
+@pytest.fixture(scope="session")
+def ssh_private_key() -> Generator[pathlib.Path]:
+    """Generate an SSH key pair for 'juju ssh', and yield the path of the private key."""
+    with tempfile.TemporaryDirectory(dir=snap_safe_temp_dir()) as directory:
+        path = pathlib.Path(directory) / "id_ed25519"
+        subprocess.run(
+            [
+                "ssh-keygen",
+                "-q",
+                "-t",
+                "ed25519",
+                "-N",
+                "",
+                "-C",
+                "integration-tests",
+                "-f",
+                str(path),
+            ],
+            check=True,
+        )
+        yield path
+
+
+@pytest.fixture(scope="module", autouse=True)
+def ssh_access(juju: jubilant.Juju, ssh_private_key: pathlib.Path) -> Generator[dict[str, Any]]:
+    """Make 'juju ssh' work in the test model, and yield the keyword arguments for 'Juju.ssh'.
+
+    Juju 3.6 adds the SSH key of the client to every new model. Juju 4 doesn't, so the fixture
+    adds its own key to the model. This follows the integration tests of Jubilant:
+
+    * A machine model needs '-i' for the connection to the machine. Before Juju 4.1, that's a
+      direct connection. From Juju 4.1, it's the final hop after the controller.
+    * From Juju 4.1, 'juju ssh' connects through the SSH server of the controller, and '-i'
+      doesn't apply to that connection. A machine model and a Kubernetes model both need
+      'ssh_key' for it.
+    * Before Juju 4.1, a Kubernetes model needs no key, because Juju uses Kubernetes credentials.
+    """
+    kwargs: dict[str, Any] = {}
+    if juju.show_model().model_type == "iaas":
+        kwargs["ssh_options"] = ["-i", str(ssh_private_key)]
+    if juju.version().tuple >= (4, 1, 0):
+        kwargs["ssh_key"] = ssh_private_key
+    if not kwargs:
+        yield kwargs
+        return
+
+    public_key = pathlib.Path(f"{ssh_private_key}.pub").read_text().strip()
+    key_data = public_key.split()[1]
+    juju.add_ssh_key(public_key)
+    # 'juju add-ssh-key' exits with 0 even if the controller rejects the key.
+    assert key_data in juju.cli("ssh-keys", "--full"), "Juju didn't add the SSH key"
+    try:
+        yield kwargs
+    finally:
+        juju.remove_ssh_key(public_key)

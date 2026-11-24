@@ -8,27 +8,27 @@ The intention is that this module could be used outside the context of a charm.
 
 import logging
 
+from charmlibs import systemd
+
 logger = logging.getLogger(__name__)
+
+# Snapd is included in Ubuntu and reads the standard proxy environment variables.
+SERVICE = "snapd.service"
 
 
 # Functions for managing the workload process on the local machine:
 
 
-def install() -> None:
-    """Install the workload (by installing a snap, for example)."""
-    # You'll need to implement this function.
-
-
 def start() -> None:
     """Start the workload (by running a command, for example)."""
-    # You'll need to implement this function.
     # Ideally, this function should only return once the workload is ready to use.
+    systemd.service_start(SERVICE)
 
 
 def stop() -> None:
     """Stop the workload (by running a command, for example)."""
-    # You'll need to implement this function.
     # Ideally, this function should only return once the workload has stopped.
+    systemd.service_stop(SERVICE)
 
 
 # Functions for interacting with the workload, for example over HTTP:
