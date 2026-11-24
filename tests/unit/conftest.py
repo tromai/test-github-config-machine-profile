@@ -2,9 +2,9 @@
 # See LICENSE file for licensing details.
 
 import pathlib
+from unittest import mock
 
 import pytest
-from charmlibs import pathops
 
 import charm
 
@@ -14,25 +14,21 @@ import charm
 
 
 @pytest.fixture
-def drop_in(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> pathops.LocalPath:
-    """Write the drop-in file to a temporary directory instead of /etc/systemd."""
-    path = pathops.LocalPath(tmp_path / "proxy.conf")
-    monkeypatch.setattr(charm, "PROXY_DROP_IN", path)
-    return path
+def unused_drop_in(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
+    """Write the drop-in file to a temporary directory instead of /etc/systemd.
+
+    Tests that check the drop-in file patch ``PROXY_DROP_IN`` themselves.
+    """
+    monkeypatch.setattr(charm, "PROXY_DROP_IN", tmp_path / "unused-proxy.conf")
 
 
 @pytest.fixture
-def restarted(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Record the services that the charm restarts, instead of calling systemctl."""
-    services: list[str] = []
-
-    def service_restart(*args: str) -> bool:
-        services.extend(args)
-        return True
-
+def service_restart(monkeypatch: pytest.MonkeyPatch) -> mock.Mock:
+    """Replace the systemctl calls of the charm. Return the mock for restarting the service."""
+    restart = mock.Mock(return_value=True)
     monkeypatch.setattr(charm.systemd, "daemon_reload", lambda: True)
-    monkeypatch.setattr(charm.systemd, "service_restart", service_restart)
+    monkeypatch.setattr(charm.systemd, "service_restart", restart)
     monkeypatch.setattr(charm.systemd, "service_start", lambda *args: True)
     monkeypatch.setattr(charm.systemd, "service_stop", lambda *args: True)
     monkeypatch.setattr(charm.systemd, "service_running", lambda service: True)
-    return services
+    return restart
