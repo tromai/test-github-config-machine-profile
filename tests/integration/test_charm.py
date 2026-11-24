@@ -79,13 +79,6 @@ def frequent_update_status(juju: jubilant.Juju):
     juju.model_config(reset="update-status-hook-interval")
 
 
-@pytest.fixture
-def reset_proxy_configs(juju: jubilant.Juju):
-    """Reset the proxy configs after the test, even if the test fails."""
-    yield
-    juju.model_config(reset=["juju-https-proxy", "juju-no-proxy"])
-
-
 def workload_environment(juju: jubilant.Juju, ssh_access: dict[str, Any]) -> dict[str, str]:
     """Return the environment that systemd has loaded for the workload service."""
     try:
@@ -118,31 +111,34 @@ def wait_for_workload_environment(
         pytest.fail(f"The workload didn't get {expected}. Last seen: {seen}")
 
 
-@pytest.mark.usefixtures("reset_proxy_configs")
 def test_proxy_configs(juju: jubilant.Juju, ssh_access: dict[str, Any]):
     """Test that the workload gets and clears the proxy configs of the model."""
-    juju.model_config({"juju-https-proxy": PROXY_URL, "juju-no-proxy": "localhost,10.0.0.0/8"})
-    expected = {
-        "HTTP_PROXY": "",
-        "HTTPS_PROXY": PROXY_URL,
-        "NO_PROXY": "10.0.0.0/8,localhost",
-        "http_proxy": "",
-        "https_proxy": PROXY_URL,
-        "no_proxy": "10.0.0.0/8,localhost",
-    }
-    wait_for_workload_environment(juju, ssh_access, expected)
+    try:
+        juju.model_config({"juju-https-proxy": PROXY_URL, "juju-no-proxy": "localhost,10.0.0.0/8"})
+        expected = {
+            "HTTP_PROXY": "",
+            "HTTPS_PROXY": PROXY_URL,
+            "NO_PROXY": "10.0.0.0/8,localhost",
+            "http_proxy": "",
+            "https_proxy": PROXY_URL,
+            "no_proxy": "10.0.0.0/8,localhost",
+        }
+        wait_for_workload_environment(juju, ssh_access, expected)
 
-    # Removed proxy configs are cleared, and juju-no-proxy returns to the Juju default.
-    juju.model_config(reset=["juju-https-proxy", "juju-no-proxy"])
-    expected = {
-        "HTTP_PROXY": "",
-        "HTTPS_PROXY": "",
-        "NO_PROXY": "127.0.0.1,::1,localhost",
-        "http_proxy": "",
-        "https_proxy": "",
-        "no_proxy": "127.0.0.1,::1,localhost",
-    }
-    wait_for_workload_environment(juju, ssh_access, expected)
+        # Removed proxy configs are cleared, and juju-no-proxy returns to the Juju default.
+        juju.model_config(reset=["juju-https-proxy", "juju-no-proxy"])
+        expected = {
+            "HTTP_PROXY": "",
+            "HTTPS_PROXY": "",
+            "NO_PROXY": "127.0.0.1,::1,localhost",
+            "http_proxy": "",
+            "https_proxy": "",
+            "no_proxy": "127.0.0.1,::1,localhost",
+        }
+        wait_for_workload_environment(juju, ssh_access, expected)
+    finally:
+        # Reset the proxy configs, even if the test fails, so later tests start clean.
+        juju.model_config(reset=["juju-https-proxy", "juju-no-proxy"])
 
 
 # If you implement boo.get_version in the charm source,
