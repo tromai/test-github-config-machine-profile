@@ -91,7 +91,9 @@ def workload_environment(juju: jubilant.Juju, ssh_access: dict[str, Any]) -> dic
             raise
         return {}
     # Systemctl separates the entries with spaces, and quotes an entry that contains a space.
-    return dict(entry.split("=", 1) for entry in shlex.split(output))
+    logger.info("workload environment: %r", output)
+    # Ignore any token that isn't 'NAME=value', such as a stray line from 'juju ssh'.
+    return dict(entry.split("=", 1) for entry in shlex.split(output) if "=" in entry)
 
 
 def wait_for_workload_environment(
