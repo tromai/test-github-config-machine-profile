@@ -89,6 +89,7 @@ def workload_environment(juju: jubilant.Juju, ssh_access: dict[str, Any]) -> dic
         # Juju 4 can refuse SSH while the machine's authorised keys are still being updated.
         if "Permission denied (publickey)" not in str(exc):
             raise
+        logger.info("juju ssh was refused: %s", exc)
         return {}
     # Systemctl separates the entries with spaces, and quotes an entry that contains a space.
     logger.info("workload environment: %r", output)

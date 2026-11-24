@@ -6,7 +6,9 @@
 
 import os
 import pathlib
+import shutil
 import subprocess
+import tempfile
 from collections.abc import Generator
 from typing import Any
 
@@ -29,26 +31,40 @@ def charm():
     return path
 
 
+def snap_safe_temp_dir() -> pathlib.Path:
+    """Return a directory that the Juju CLI can read, even when Juju is a confined snap.
+
+    A strictly confined snap has its own private '/tmp', so it can't read files that the tests
+    write there. Jubilant puts such files in '~/snap/juju/common', and this does the same.
+    """
+    if "/snap/" in (shutil.which("juju") or ""):
+        path = pathlib.Path("~/snap/juju/common").expanduser()
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    return pathlib.Path(tempfile.gettempdir())
+
+
 @pytest.fixture(scope="session")
-def ssh_private_key(tmp_path_factory: pytest.TempPathFactory) -> pathlib.Path:
-    """Generate an SSH key pair for 'juju ssh', and return the path of the private key."""
-    path = tmp_path_factory.mktemp("ssh") / "id_ed25519"
-    subprocess.run(
-        [
-            "ssh-keygen",
-            "-q",
-            "-t",
-            "ed25519",
-            "-N",
-            "",
-            "-C",
-            "integration-tests",
-            "-f",
-            str(path),
-        ],
-        check=True,
-    )
-    return path
+def ssh_private_key() -> Generator[pathlib.Path]:
+    """Generate an SSH key pair for 'juju ssh', and yield the path of the private key."""
+    with tempfile.TemporaryDirectory(dir=snap_safe_temp_dir()) as directory:
+        path = pathlib.Path(directory) / "id_ed25519"
+        subprocess.run(
+            [
+                "ssh-keygen",
+                "-q",
+                "-t",
+                "ed25519",
+                "-N",
+                "",
+                "-C",
+                "integration-tests",
+                "-f",
+                str(path),
+            ],
+            check=True,
+        )
+        yield path
 
 
 @pytest.fixture(scope="module", autouse=True)
