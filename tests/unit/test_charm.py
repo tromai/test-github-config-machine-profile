@@ -259,6 +259,7 @@ def test_proxy_configs_reach_the_workload(drop_in: pathops.LocalPath, restarted:
     assert f'Environment="HTTPS_PROXY={PROXY_URL}"' in content
     assert f'Environment="https_proxy={PROXY_URL}"' in content
     assert 'Environment="NO_PROXY=10.0.0.0/8,localhost"' in content
+    assert drop_in.stat().st_mode & 0o777 == 0o600
     assert restarted == [charm.SERVICE]
 
 

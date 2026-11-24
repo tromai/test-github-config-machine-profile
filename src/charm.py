@@ -66,8 +66,9 @@ class BooMachineCharm(ops.CharmBase):
             # can contain '%' in percent-encoded credentials.
             value = value.replace("%", "%%")
             lines.append(f'Environment="{name}={value}"')
-        # 'ensure_contents' only writes the file if the contents differ.
-        if pathops.ensure_contents(PROXY_DROP_IN, "\n".join(lines) + "\n"):
+        # 'ensure_contents' only writes the file if the contents or the mode differ. systemd
+        # reads the drop-in file as root, so no other user needs access.
+        if pathops.ensure_contents(PROXY_DROP_IN, "\n".join(lines) + "\n", mode=0o600):
             systemd.daemon_reload()
             # A stopped workload (for example, after the pause action) reads the new proxy
             # configs when it starts, so only restart a workload that's running.
